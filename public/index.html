@@ -1,0 +1,378 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>互动特效合集</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            min-height: 100vh;
+            background: linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%);
+            font-family: 'Segoe UI', 'Microsoft YaHei', sans-serif;
+            padding: 40px 20px;
+            position: relative;
+            overflow-x: hidden;
+        }
+
+        /* 背景动画粒子 */
+        .particles {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
+            overflow: hidden;
+            z-index: 0;
+        }
+
+        .particle {
+            position: absolute;
+            width: 4px;
+            height: 4px;
+            background: rgba(255, 255, 255, 0.3);
+            border-radius: 50%;
+            animation: float 15s infinite;
+        }
+
+        @keyframes float {
+            0%, 100% {
+                transform: translateY(100vh) rotate(0deg);
+                opacity: 0;
+            }
+            10% {
+                opacity: 1;
+            }
+            90% {
+                opacity: 1;
+            }
+            100% {
+                transform: translateY(-100vh) rotate(720deg);
+                opacity: 0;
+            }
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            position: relative;
+            z-index: 1;
+        }
+
+        header {
+            text-align: center;
+            margin-bottom: 50px;
+        }
+
+        h1 {
+            font-size: 3rem;
+            color: #fff;
+            text-shadow: 0 0 30px rgba(102, 126, 234, 0.5);
+            margin-bottom: 15px;
+            animation: glow 2s ease-in-out infinite alternate;
+        }
+
+        @keyframes glow {
+            from {
+                text-shadow: 0 0 20px rgba(102, 126, 234, 0.5);
+            }
+            to {
+                text-shadow: 0 0 40px rgba(118, 75, 226, 0.8), 0 0 60px rgba(102, 126, 234, 0.4);
+            }
+        }
+
+        .subtitle {
+            color: rgba(255, 255, 255, 0.7);
+            font-size: 1.1rem;
+            letter-spacing: 2px;
+        }
+
+        .grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+            gap: 25px;
+            padding: 10px;
+        }
+
+        .card {
+            background: rgba(255, 255, 255, 0.05);
+            backdrop-filter: blur(10px);
+            border-radius: 20px;
+            padding: 30px;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            cursor: pointer;
+            transition: all 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+            position: relative;
+            overflow: hidden;
+            text-decoration: none;
+            display: block;
+        }
+
+        .card::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: -100%;
+            width: 100%;
+            height: 100%;
+            background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.1), transparent);
+            transition: left 0.5s;
+        }
+
+        .card:hover::before {
+            left: 100%;
+        }
+
+        .card:hover {
+            transform: translateY(-10px) scale(1.02);
+            border-color: rgba(255, 255, 255, 0.3);
+            box-shadow: 0 20px 40px rgba(0, 0, 0, 0.3),
+                        0 0 60px rgba(102, 126, 234, 0.2);
+        }
+
+        .card-icon {
+            font-size: 3rem;
+            margin-bottom: 20px;
+            display: block;
+        }
+
+        .card-title {
+            font-size: 1.5rem;
+            color: #fff;
+            margin-bottom: 10px;
+            font-weight: 600;
+        }
+
+        .card-desc {
+            color: rgba(255, 255, 255, 0.6);
+            font-size: 0.95rem;
+            line-height: 1.6;
+            margin-bottom: 15px;
+        }
+
+        .card-meta {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding-top: 15px;
+            border-top: 1px solid rgba(255, 255, 255, 0.1);
+        }
+
+        .card-size {
+            color: rgba(255, 255, 255, 0.4);
+            font-size: 0.85rem;
+        }
+
+        .card-arrow {
+            width: 35px;
+            height: 35px;
+            border-radius: 50%;
+            background: linear-gradient(135deg, #667eea, #764ba2);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: #fff;
+            font-size: 1.2rem;
+            transition: transform 0.3s;
+        }
+
+        .card:hover .card-arrow {
+            transform: translateX(5px);
+        }
+
+        /* 不同卡片的主题色 */
+        .card.theme-pink { border-left: 4px solid #ff6b9d; }
+        .card.theme-pink .card-icon { color: #ff6b9d; }
+        
+        .card.theme-blue { border-left: 4px solid #4facfe; }
+        .card.theme-blue .card-icon { color: #4facfe; }
+        
+        .card.theme-green { border-left: 4px solid #00f2fe; }
+        .card.theme-green .card-icon { color: #00f2fe; }
+        
+        .card.theme-orange { border-left: 4px solid #f093fb; }
+        .card.theme-orange .card-icon { color: #f093fb; }
+        
+        .card.theme-red { border-left: 4px solid #f5576c; }
+        .card.theme-red .card-icon { color: #f5576c; }
+        
+        .card.theme-yellow { border-left: 4px solid #ffecd2; }
+        .card.theme-yellow .card-icon { color: #ffecd2; }
+        
+        .card.theme-purple { border-left: 4px solid #a18cd1; }
+        .card.theme-purple .card-icon { color: #a18cd1; }
+
+        footer {
+            text-align: center;
+            margin-top: 60px;
+            padding: 20px;
+            color: rgba(255, 255, 255, 0.4);
+            font-size: 0.9rem;
+        }
+
+        footer a {
+            color: rgba(255, 255, 255, 0.6);
+            text-decoration: none;
+            transition: color 0.3s;
+        }
+
+        footer a:hover {
+            color: #fff;
+        }
+
+        @media (max-width: 768px) {
+            h1 {
+                font-size: 2rem;
+            }
+            
+            .grid {
+                grid-template-columns: 1fr;
+            }
+            
+            .card {
+                padding: 20px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="particles" id="particles"></div>
+    
+    <div class="container">
+        <header>
+            <h1>✨ 互动特效合集</h1>
+            <p class="subtitle">探索精彩的视觉与交互体验</p>
+        </header>
+
+        <div class="grid">
+            <a href="index_飞花令.html" class="card theme-pink">
+                <span class="card-icon">🌸</span>
+                <h2 class="card-title">飞花令</h2>
+                <p class="card-desc">体验古典诗词之美，在花瓣飘落中感受传统文化的韵味与浪漫</p>
+                <div class="card-meta">
+                    <span class="card-size">55.4 KB</span>
+                    <span class="card-arrow">→</span>
+                </div>
+            </a>
+
+            <a href="index_粒子特效.html" class="card theme-blue">
+                <span class="card-icon">💫</span>
+                <h2 class="card-title">粒子特效</h2>
+                <p class="card-desc">梦幻般的粒子动画，随鼠标起舞的光点，打造沉浸式视觉体验</p>
+                <div class="card-meta">
+                    <span class="card-size">27.7 KB</span>
+                    <span class="card-arrow">→</span>
+                </div>
+            </a>
+
+            <a href="index_粒子特效2.html" class="card theme-green">
+                <span class="card-icon">🌟</span>
+                <h2 class="card-title">粒子特效 Plus</h2>
+                <p class="card-desc">升级版粒子效果，更绚丽的色彩变换与更流畅的交互动画</p>
+                <div class="card-meta">
+                    <span class="card-size">27.9 KB</span>
+                    <span class="card-arrow">→</span>
+                </div>
+            </a>
+
+            <a href="index_枪击1.html" class="card theme-red">
+                <span class="card-icon">🔫</span>
+                <h2 class="card-title">枪击特效</h2>
+                <p class="card-desc">紧张刺激的射击特效，体验子弹飞射与碰撞的视觉冲击</p>
+                <div class="card-meta">
+                    <span class="card-size">56.7 KB</span>
+                    <span class="card-arrow">→</span>
+                </div>
+            </a>
+
+            <a href="index_枪击2.html" class="card theme-orange">
+                <span class="card-icon">💥</span>
+                <h2 class="card-title">枪击特效 2.0</h2>
+                <p class="card-desc">全新升级的射击体验，更丰富的弹道效果与爆炸特效</p>
+                <div class="card-meta">
+                    <span class="card-size">49.3 KB</span>
+                    <span class="card-arrow">→</span>
+                </div>
+            </a>
+
+            <a href="index_切水果.html" class="card theme-yellow">
+                <span class="card-icon">🍉</span>
+                <h2 class="card-title">切水果</h2>
+                <p class="card-desc">经典水果忍者玩法，挥动手指切开水果，享受清爽的切割快感</p>
+                <div class="card-meta">
+                    <span class="card-size">48.6 KB</span>
+                    <span class="card-arrow">→</span>
+                </div>
+            </a>
+
+            <a href="index_圣诞树.html" class="card theme-green">
+                <span class="card-icon">🎄</span>
+                <h2 class="card-title">圣诞树</h2>
+                <p class="card-desc">闪烁的圣诞树，带来节日的温馨氛围与美好祝福</p>
+                <div class="card-meta">
+                    <span class="card-size">25.6 KB</span>
+                    <span class="card-arrow">→</span>
+                </div>
+            </a>
+
+            <a href="index_圣诞树plus.html" class="card theme-red">
+                <span class="card-icon">🎅</span>
+                <h2 class="card-title">圣诞树 Plus</h2>
+                <p class="card-desc">豪华版圣诞树，更多装饰、更炫灯光，完整的节日氛围</p>
+                <div class="card-meta">
+                    <span class="card-size">37.8 KB</span>
+                    <span class="card-arrow">→</span>
+                </div>
+            </a>
+
+            <a href="index_Love.html" class="card theme-purple">
+                <span class="card-icon">💖</span>
+                <h2 class="card-title">Love</h2>
+                <p class="card-desc">浪漫的爱心特效，用代码表达爱意，传递温暖与感动</p>
+                <div class="card-meta">
+                    <span class="card-size">31.3 KB</span>
+                    <span class="card-arrow">→</span>
+                </div>
+            </a>
+        </div>
+
+        <footer>
+            <p>Made with 💜 | 2025</p>
+        </footer>
+    </div>
+
+    <script>
+        // 创建背景粒子
+        const particlesContainer = document.getElementById('particles');
+        const particleCount = 50;
+
+        for (let i = 0; i < particleCount; i++) {
+            const particle = document.createElement('div');
+            particle.className = 'particle';
+            particle.style.left = Math.random() * 100 + '%';
+            particle.style.animationDelay = Math.random() * 15 + 's';
+            particle.style.animationDuration = (10 + Math.random() * 10) + 's';
+            particle.style.width = (2 + Math.random() * 4) + 'px';
+            particle.style.height = particle.style.width;
+            particlesContainer.appendChild(particle);
+        }
+
+        // 卡片悬停音效（可选）
+        const cards = document.querySelectorAll('.card');
+        cards.forEach(card => {
+            card.addEventListener('mouseenter', () => {
+                card.style.background = 'rgba(255, 255, 255, 0.08)';
+            });
+            card.addEventListener('mouseleave', () => {
+                card.style.background = 'rgba(255, 255, 255, 0.05)';
+            });
+        });
+    </script>
+</body>
+</html>

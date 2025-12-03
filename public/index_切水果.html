@@ -1,0 +1,1325 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>手势切水果 - 3D游戏</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { 
+            width: 100%;
+            height: 100vh;
+            overflow: hidden; 
+            background: linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%);
+            font-family: 'Segoe UI', Arial, sans-serif;
+        }
+        canvas { display: block; }
+        
+        #game-container {
+            position: relative;
+            width: 100%;
+            height: 100%;
+        }
+        
+        #info {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            color: #fff;
+            font-size: 24px;
+            font-weight: bold;
+            z-index: 10;
+            background: linear-gradient(135deg, rgba(0,0,0,0.8), rgba(30,30,60,0.8));
+            padding: 15px 25px;
+            border-radius: 15px;
+            border: 2px solid rgba(255,255,255,0.2);
+            backdrop-filter: blur(10px);
+            box-shadow: 0 8px 32px rgba(0,0,0,0.3);
+        }
+        
+        #info .score-value {
+            color: #00ff88;
+            text-shadow: 0 0 20px #00ff88;
+        }
+        
+        #info .combo-value {
+            color: #ff6b6b;
+            text-shadow: 0 0 20px #ff6b6b;
+        }
+        
+        #timer {
+            position: absolute;
+            top: 20px;
+            right: 20px;
+            color: #fff;
+            font-size: 28px;
+            font-weight: bold;
+            z-index: 10;
+            background: linear-gradient(135deg, rgba(0,0,0,0.8), rgba(30,30,60,0.8));
+            padding: 15px 25px;
+            border-radius: 15px;
+            border: 2px solid rgba(255,255,255,0.2);
+            backdrop-filter: blur(10px);
+            box-shadow: 0 8px 32px rgba(0,0,0,0.3);
+        }
+        
+        #timer.warning {
+            animation: timerPulse 0.5s infinite;
+            border-color: #ff4444;
+        }
+        
+        @keyframes timerPulse {
+            0%, 100% { transform: scale(1); }
+            50% { transform: scale(1.05); }
+        }
+        
+        #status {
+            position: absolute;
+            bottom: 20px;
+            left: 20px;
+            color: #fff;
+            font-size: 18px;
+            background: linear-gradient(135deg, rgba(0,0,0,0.7), rgba(30,30,60,0.7));
+            padding: 12px 20px;
+            border-radius: 10px;
+            border: 1px solid rgba(255,255,255,0.1);
+            backdrop-filter: blur(5px);
+        }
+        
+        #combo-display {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            color: #ff6b6b;
+            font-size: 72px;
+            font-weight: bold;
+            text-shadow: 0 0 30px #ff6b6b, 0 0 60px #ff6b6b;
+            z-index: 15;
+            pointer-events: none;
+            opacity: 0;
+            transition: all 0.3s ease;
+        }
+        
+        #combo-display.show {
+            animation: comboPopup 0.5s ease-out;
+        }
+        
+        @keyframes comboPopup {
+            0% { opacity: 0; transform: translate(-50%, -50%) scale(0.5); }
+            50% { opacity: 1; transform: translate(-50%, -50%) scale(1.2); }
+            100% { opacity: 0; transform: translate(-50%, -50%) scale(1) translateY(-50px); }
+        }
+        
+        #webcam-container {
+            position: absolute;
+            bottom: 20px;
+            right: 20px;
+            width: 220px;
+            height: 165px;
+            border: 3px solid rgba(0,255,136,0.6);
+            box-shadow: 0 0 30px rgba(0, 255, 136, 0.3), inset 0 0 20px rgba(0,0,0,0.5);
+            z-index: 10;
+            overflow: hidden;
+            border-radius: 15px;
+            background: #000;
+        }
+        
+        #webcam {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+            transform: scaleX(-1);
+        }
+        
+        #hand-canvas {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            z-index: 11;
+        }
+        
+        #knife-trail-canvas {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
+            z-index: 20;
+        }
+        
+        #knife-pointer {
+            position: fixed;
+            width: 60px;
+            height: 60px;
+            pointer-events: none;
+            z-index: 21;
+            display: none;
+            font-size: 45px;
+            line-height: 60px;
+            text-align: center;
+            filter: drop-shadow(0 0 15px #ff6600) drop-shadow(0 0 30px #ffaa00);
+            transition: transform 0.05s ease-out;
+        }
+        
+        #knife-pointer.slicing {
+            animation: sliceEffect 0.15s ease-out;
+        }
+        
+        @keyframes sliceEffect {
+            0% { transform: scale(1) rotate(0deg); }
+            50% { transform: scale(1.3) rotate(15deg); }
+            100% { transform: scale(1) rotate(0deg); }
+        }
+        
+        #start-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: radial-gradient(circle at center, transparent 0%, rgba(0,0,0,0.7) 100%);
+            z-index: 25;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            pointer-events: none;
+        }
+        
+        #start-overlay h1 {
+            font-size: 48px;
+            color: #fff;
+            text-shadow: 0 0 30px #00ff88;
+            margin-bottom: 20px;
+            animation: titleFloat 2s ease-in-out infinite;
+        }
+        
+        @keyframes titleFloat {
+            0%, 100% { transform: translateY(0); }
+            50% { transform: translateY(-10px); }
+        }
+        
+        #start-overlay p {
+            font-size: 24px;
+            color: rgba(255,255,255,0.8);
+            animation: blink 1.5s infinite;
+        }
+        
+        @keyframes blink {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
+        }
+        
+        #game-over-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0,0,0,0.85);
+            z-index: 30;
+            display: none;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+        }
+        
+        #game-over-overlay.show {
+            display: flex;
+            animation: fadeIn 0.5s ease;
+        }
+        
+        @keyframes fadeIn {
+            from { opacity: 0; }
+            to { opacity: 1; }
+        }
+        
+        #game-over-overlay h1 {
+            font-size: 64px;
+            color: #ff6b6b;
+            text-shadow: 0 0 30px #ff6b6b;
+            margin-bottom: 30px;
+        }
+        
+        #game-over-overlay .final-score {
+            font-size: 48px;
+            color: #00ff88;
+            margin-bottom: 20px;
+        }
+        
+        #game-over-overlay .stats {
+            font-size: 24px;
+            color: rgba(255,255,255,0.8);
+            margin-bottom: 40px;
+        }
+        
+        #game-over-overlay .restart-hint {
+            font-size: 20px;
+            color: rgba(255,255,255,0.6);
+            animation: blink 1.5s infinite;
+        }
+        
+        /* 重新开始按钮区域 */
+        #restart-zone {
+            width: 200px;
+            height: 200px;
+            border: 4px dashed rgba(0, 255, 136, 0.6);
+            border-radius: 50%;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            margin: 30px 0;
+            animation: pulseZone 2s ease-in-out infinite;
+            background: rgba(0, 255, 136, 0.1);
+        }
+        
+        @keyframes pulseZone {
+            0%, 100% { transform: scale(1); border-color: rgba(0, 255, 136, 0.6); }
+            50% { transform: scale(1.05); border-color: rgba(0, 255, 136, 1); }
+        }
+        
+        #restart-zone .restart-icon {
+            font-size: 80px;
+            animation: rotateIcon 3s linear infinite;
+        }
+        
+        @keyframes rotateIcon {
+            from { transform: rotate(0deg); }
+            to { transform: rotate(360deg); }
+        }
+        
+        .score-popup {
+            position: fixed;
+            font-size: 32px;
+            font-weight: bold;
+            pointer-events: none;
+            z-index: 25;
+            animation: scoreFloat 1s ease-out forwards;
+        }
+        
+        .score-popup.positive {
+            color: #00ff88;
+            text-shadow: 0 0 20px #00ff88;
+        }
+        
+        .score-popup.negative {
+            color: #ff4444;
+            text-shadow: 0 0 20px #ff4444;
+        }
+        
+        @keyframes scoreFloat {
+            0% { opacity: 1; transform: translateY(0) scale(1); }
+            100% { opacity: 0; transform: translateY(-80px) scale(1.5); }
+        }
+        
+        /* 粒子效果容器 */
+        .particle {
+            position: fixed;
+            pointer-events: none;
+            z-index: 22;
+            font-size: 24px;
+            animation: particleFly 0.8s ease-out forwards;
+        }
+        
+        @keyframes particleFly {
+            0% { opacity: 1; transform: scale(1); }
+            100% { opacity: 0; transform: scale(0.3) translateY(100px); }
+        }
+        
+        /* 屏幕震动 */
+        .shake {
+            animation: shake 0.3s ease-in-out;
+        }
+        
+        @keyframes shake {
+            0%, 100% { transform: translateX(0); }
+            25% { transform: translateX(-10px); }
+            75% { transform: translateX(10px); }
+        }
+    </style>
+</head>
+<body>
+    <div id="game-container">
+        <div id="info">
+            🎯 分数: <span class="score-value">0</span> | 
+            🔥 连击: <span class="combo-value">0</span>
+        </div>
+        <div id="timer">⏱️ 60s</div>
+        <div id="combo-display"></div>
+        <div id="status">✋ 准备中...</div>
+        <div id="knife-pointer"></div>
+        <canvas id="knife-trail-canvas"></canvas>
+        
+        <div id="start-overlay">
+            <h1>🍉 切水果大师 🔪</h1>
+            <p>👆 用手指切割 🌍 开始游戏!</p>
+        </div>
+        
+        <div id="game-over-overlay">
+            <h1>🎮 游戏结束!</h1>
+            <div class="final-score">最终得分: <span id="final-score-value">0</span></div>
+            <div class="stats">
+                最高连击: <span id="max-combo-value">0</span> | 
+                切中水果: <span id="fruits-sliced-value">0</span>
+            </div>
+            <div id="restart-zone">
+                <span class="restart-icon">🔄</span>
+            </div>
+            <p class="restart-hint">👆 切割上方圆圈重新开始</p>
+        </div>
+        
+        <div id="webcam-container">
+            <video id="webcam" autoplay muted playsinline></video>
+            <canvas id="hand-canvas"></canvas>
+        </div>
+    </div>
+
+    <!-- 本地 MediaPipe 文件 -->
+    <script src="./js/camera_utils.js"></script>
+    <script src="./js/drawing_utils.js"></script>
+    <script src="./js/hands.js"></script>
+    <script src="./js/three.min.js"></script>
+
+    <script>
+        // ===== 全局变量 =====
+        let scene, camera, renderer;
+        let score = 0;
+        let combo = 0;
+        let maxCombo = 0;
+        let fruitsSliced = 0;
+        let gameState = 'START_SCREEN';
+        let gameObjects = [];
+        let particles = [];
+        let sliceTrails = [];
+        
+        const webcamVideo = document.getElementById('webcam');
+        const infoDisplay = document.getElementById('info');
+        const timerDisplay = document.getElementById('timer');
+        const statusDisplay = document.getElementById('status');
+        const comboDisplay = document.getElementById('combo-display');
+        const handCanvas = document.getElementById('hand-canvas');
+        const handCtx = handCanvas.getContext('2d');
+        const knifePointer = document.getElementById('knife-pointer');
+        const trailCanvas = document.getElementById('knife-trail-canvas');
+        const trailCtx = trailCanvas.getContext('2d');
+        const startOverlay = document.getElementById('start-overlay');
+        const gameOverOverlay = document.getElementById('game-over-overlay');
+        const gameContainer = document.getElementById('game-container');
+        const restartZone = document.getElementById('restart-zone');
+
+        // 游戏配置
+        const CONFIG = {
+            baseSpawnInterval: 1200,
+            minSpawnInterval: 400,
+            objectSpeed: 0.04,
+            gravity: 0.0012,
+            trailLength: 15,
+            trailFadeSpeed: 0.08,
+            restartZoneRadius: 100  // 重新开始区域的半径
+        };
+
+        let gameTime = 60;
+        let isGameRunning = false;
+        let lastSpawnTime = 0;
+        let startEarth;
+        let difficulty = 1;
+
+        // 刀光轨迹
+        let trailPoints = [];
+        const maxTrailPoints = 20;
+
+        // 水果类型配置
+        const FRUIT_TYPES = [
+            { emoji: '🍉', points: 10, color: '#ff6b6b' },
+            { emoji: '🍍', points: 15, color: '#ffd93d' },
+            { emoji: '🍓', points: 10, color: '#ff4757' },
+            { emoji: '🥝', points: 12, color: '#7bed9f' },
+            { emoji: '🍌', points: 8, color: '#ffeaa7' },
+            { emoji: '🍊', points: 10, color: '#ff9f43' },
+            { emoji: '🍇', points: 15, color: '#a55eea' },
+            { emoji: '🍑', points: 12, color: '#ffb8b8' },
+            { emoji: '🍒', points: 20, color: '#ee5a24' },
+            { emoji: '🥭', points: 15, color: '#f9ca24' }
+        ];
+
+        // 音频上下文
+        const AudioContext = window.AudioContext || window.webkitAudioContext;
+        const audioCtx = new AudioContext();
+
+        // ===== 游戏对象类 =====
+        class GameObject {
+            constructor(type, emoji, points = 0, color = '#ffffff') {
+                this.type = type;
+                this.emoji = emoji;
+                this.points = points;
+                this.color = color;
+                this.isSliced = false;
+                this.isStartScreen = false;
+                this.mesh = this.createMesh();
+                
+                // 动态速度基于难度
+                const speedMultiplier = 1 + (difficulty - 1) * 0.15;
+                this.velocity = new THREE.Vector3(
+                    (Math.random() - 0.5) * CONFIG.objectSpeed * 2 * speedMultiplier,
+                    CONFIG.objectSpeed * (2.5 + Math.random() * 0.5) * speedMultiplier,
+                    0
+                );
+                this.rotationSpeed = (Math.random() * 0.04 + 0.02) * (Math.random() > 0.5 ? 1 : -1);
+                
+                // 从屏幕底部随机位置生成
+                this.mesh.position.set(
+                    (Math.random() - 0.5) * 6,
+                    -5,
+                    0
+                );
+                
+                // 添加轻微的左右偏移趋势
+                if (this.mesh.position.x < 0) {
+                    this.velocity.x += 0.01;
+                } else {
+                    this.velocity.x -= 0.01;
+                }
+                
+                scene.add(this.mesh);
+            }
+
+            createMesh() {
+                const canvas = document.createElement('canvas');
+                const size = 256;
+                canvas.width = canvas.height = size;
+                const ctx = canvas.getContext('2d');
+                
+                // 添加发光效果
+                ctx.shadowColor = this.color;
+                ctx.shadowBlur = 20;
+                ctx.font = `${size * 0.75}px Arial`;
+                ctx.textAlign = 'center';
+                ctx.textBaseline = 'middle';
+                ctx.fillText(this.emoji, size / 2, size / 2);
+
+                const texture = new THREE.CanvasTexture(canvas);
+                texture.minFilter = THREE.LinearFilter;
+                const material = new THREE.SpriteMaterial({ 
+                    map: texture, 
+                    transparent: true,
+                    depthTest: false
+                });
+                
+                const sprite = new THREE.Sprite(material);
+                const scale = this.type === 'EARTH' ? 2.5 : (this.type === 'BOMB' ? 1.2 : 1.0);
+                sprite.scale.set(scale, scale, 1);
+                
+                return sprite;
+            }
+
+            update(deltaTime) {
+                if (this.isSliced) return false;
+                
+                if (this.isStartScreen) {
+                    this.mesh.material.rotation += this.rotationSpeed;
+                    return true;
+                }
+                
+                this.mesh.position.add(this.velocity);
+                this.velocity.y -= CONFIG.gravity;
+                this.mesh.material.rotation += this.rotationSpeed;
+                
+                // 检查是否超出屏幕
+                if (this.mesh.position.y < -6) {
+                    scene.remove(this.mesh);
+                    return false;
+                }
+                
+                return true;
+            }
+
+            getScreenPosition() {
+                const vector = this.mesh.position.clone().project(camera);
+                return {
+                    x: (vector.x + 1) / 2 * window.innerWidth,
+                    y: (-vector.y + 1) / 2 * window.innerHeight
+                };
+            }
+        }
+
+        // ===== 粒子系统 =====
+        class Particle {
+            constructor(x, y, emoji, color) {
+                this.x = x;
+                this.y = y;
+                this.emoji = emoji;
+                this.color = color;
+                this.vx = (Math.random() - 0.5) * 15;
+                this.vy = (Math.random() - 0.5) * 15 - 5;
+                this.life = 1;
+                this.decay = 0.02 + Math.random() * 0.02;
+                this.rotation = Math.random() * 360;
+                this.rotationSpeed = (Math.random() - 0.5) * 20;
+                this.scale = 0.5 + Math.random() * 0.5;
+            }
+
+            update() {
+                this.x += this.vx;
+                this.y += this.vy;
+                this.vy += 0.5; // 重力
+                this.life -= this.decay;
+                this.rotation += this.rotationSpeed;
+                return this.life > 0;
+            }
+
+            draw(ctx) {
+                ctx.save();
+                ctx.globalAlpha = this.life;
+                ctx.translate(this.x, this.y);
+                ctx.rotate(this.rotation * Math.PI / 180);
+                ctx.scale(this.scale * this.life, this.scale * this.life);
+                ctx.font = '24px Arial';
+                ctx.textAlign = 'center';
+                ctx.textBaseline = 'middle';
+                ctx.fillText(this.emoji, 0, 0);
+                ctx.restore();
+            }
+        }
+
+        // ===== 刀光轨迹 =====
+        class TrailPoint {
+            constructor(x, y) {
+                this.x = x;
+                this.y = y;
+                this.alpha = 1;
+            }
+        }
+
+        function updateTrail() {
+            trailCtx.clearRect(0, 0, trailCanvas.width, trailCanvas.height);
+            
+            if (trailPoints.length < 2) return;
+            
+            // 绘制渐变刀光
+            for (let i = 1; i < trailPoints.length; i++) {
+                const p1 = trailPoints[i - 1];
+                const p2 = trailPoints[i];
+                
+                const gradient = trailCtx.createLinearGradient(p1.x, p1.y, p2.x, p2.y);
+                const alpha = (i / trailPoints.length) * p2.alpha;
+                
+                gradient.addColorStop(0, `rgba(255, 150, 50, ${alpha * 0.3})`);
+                gradient.addColorStop(0.5, `rgba(255, 200, 100, ${alpha})`);
+                gradient.addColorStop(1, `rgba(255, 255, 200, ${alpha})`);
+                
+                trailCtx.beginPath();
+                trailCtx.moveTo(p1.x, p1.y);
+                trailCtx.lineTo(p2.x, p2.y);
+                trailCtx.strokeStyle = gradient;
+                trailCtx.lineWidth = 8 * alpha + 2;
+                trailCtx.lineCap = 'round';
+                trailCtx.stroke();
+                
+                // 外发光
+                trailCtx.beginPath();
+                trailCtx.moveTo(p1.x, p1.y);
+                trailCtx.lineTo(p2.x, p2.y);
+                trailCtx.strokeStyle = `rgba(255, 100, 0, ${alpha * 0.3})`;
+                trailCtx.lineWidth = 20 * alpha;
+                trailCtx.stroke();
+            }
+            
+            // 衰减轨迹点
+            trailPoints.forEach(p => p.alpha -= CONFIG.trailFadeSpeed);
+            trailPoints = trailPoints.filter(p => p.alpha > 0);
+        }
+
+        // ===== 音效系统 =====
+        function playSound(type, volume = 0.3) {
+            if (audioCtx.state === 'suspended') audioCtx.resume();
+            const now = audioCtx.currentTime;
+
+            if (type === 'slice') {
+                // 清脆的切割音
+                const osc1 = audioCtx.createOscillator();
+                const osc2 = audioCtx.createOscillator();
+                const gain = audioCtx.createGain();
+                const filter = audioCtx.createBiquadFilter();
+                
+                filter.type = 'highpass';
+                filter.frequency.value = 2000;
+                
+                osc1.type = 'sine';
+                osc1.frequency.setValueAtTime(1200 + Math.random() * 400, now);
+                osc1.frequency.exponentialRampToValueAtTime(600, now + 0.08);
+                
+                osc2.type = 'triangle';
+                osc2.frequency.setValueAtTime(800, now);
+                osc2.frequency.exponentialRampToValueAtTime(400, now + 0.08);
+                
+                gain.gain.setValueAtTime(volume, now);
+                gain.gain.exponentialRampToValueAtTime(0.01, now + 0.1);
+                
+                osc1.connect(filter);
+                osc2.connect(filter);
+                filter.connect(gain);
+                gain.connect(audioCtx.destination);
+                
+                osc1.start(now);
+                osc2.start(now);
+                osc1.stop(now + 0.1);
+                osc2.stop(now + 0.1);
+                
+            } else if (type === 'combo') {
+                // 连击音效 - 上升音阶
+                const baseFreq = 400 + Math.min(combo, 10) * 50;
+                for (let i = 0; i < 3; i++) {
+                    const osc = audioCtx.createOscillator();
+                    const gain = audioCtx.createGain();
+                    osc.type = 'sine';
+                    osc.frequency.value = baseFreq * (1 + i * 0.25);
+                    gain.gain.setValueAtTime(0, now + i * 0.05);
+                    gain.gain.linearRampToValueAtTime(0.15, now + i * 0.05 + 0.02);
+                    gain.gain.exponentialRampToValueAtTime(0.01, now + i * 0.05 + 0.15);
+                    gain.connect(audioCtx.destination);
+                    osc.connect(gain);
+                    osc.start(now + i * 0.05);
+                    osc.stop(now + i * 0.05 + 0.15);
+                }
+                
+            } else if (type === 'bomb') {
+                // 爆炸音效
+                const bufferSize = audioCtx.sampleRate * 0.4;
+                const buffer = audioCtx.createBuffer(1, bufferSize, audioCtx.sampleRate);
+                const output = buffer.getChannelData(0);
+                for (let i = 0; i < bufferSize; i++) {
+                    output[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / bufferSize, 2);
+                }
+                
+                const noise = audioCtx.createBufferSource();
+                const gain = audioCtx.createGain();
+                const filter = audioCtx.createBiquadFilter();
+                
+                filter.type = 'lowpass';
+                filter.frequency.setValueAtTime(1000, now);
+                filter.frequency.exponentialRampToValueAtTime(100, now + 0.4);
+                
+                noise.buffer = buffer;
+                gain.gain.setValueAtTime(0.5, now);
+                gain.gain.exponentialRampToValueAtTime(0.01, now + 0.4);
+                
+                noise.connect(filter);
+                filter.connect(gain);
+                gain.connect(audioCtx.destination);
+                noise.start(now);
+                
+            } else if (type === 'poop') {
+                // 搞笑音效
+                const osc = audioCtx.createOscillator();
+                const gain = audioCtx.createGain();
+                osc.type = 'sawtooth';
+                osc.frequency.setValueAtTime(200, now);
+                osc.frequency.linearRampToValueAtTime(80, now + 0.3);
+                gain.gain.setValueAtTime(0.2, now);
+                gain.gain.exponentialRampToValueAtTime(0.01, now + 0.3);
+                gain.connect(audioCtx.destination);
+                osc.connect(gain);
+                osc.start(now);
+                osc.stop(now + 0.3);
+                
+            } else if (type === 'start') {
+                // 开始游戏音效
+                const notes = [523.25, 659.25, 783.99, 1046.50]; // C5, E5, G5, C6
+                notes.forEach((freq, i) => {
+                    const osc = audioCtx.createOscillator();
+                    const gain = audioCtx.createGain();
+                    osc.type = 'sine';
+                    osc.frequency.value = freq;
+                    gain.gain.setValueAtTime(0, now + i * 0.1);
+                    gain.gain.linearRampToValueAtTime(0.2, now + i * 0.1 + 0.05);
+                    gain.gain.exponentialRampToValueAtTime(0.01, now + i * 0.1 + 0.3);
+                    gain.connect(audioCtx.destination);
+                    osc.connect(gain);
+                    osc.start(now + i * 0.1);
+                    osc.stop(now + i * 0.1 + 0.3);
+                });
+                
+            } else if (type === 'gameOver') {
+                // 游戏结束音效
+                const notes = [523.25, 392.00, 329.63, 261.63]; // 下降音阶
+                notes.forEach((freq, i) => {
+                    const osc = audioCtx.createOscillator();
+                    const gain = audioCtx.createGain();
+                    osc.type = 'sine';
+                    osc.frequency.value = freq;
+                    gain.gain.setValueAtTime(0, now + i * 0.15);
+                    gain.gain.linearRampToValueAtTime(0.2, now + i * 0.15 + 0.05);
+                    gain.gain.exponentialRampToValueAtTime(0.01, now + i * 0.15 + 0.4);
+                    gain.connect(audioCtx.destination);
+                    osc.connect(gain);
+                    osc.start(now + i * 0.15);
+                    osc.stop(now + i * 0.15 + 0.4);
+                });
+            }
+        }
+
+        // ===== 视觉反馈 =====
+        function createScorePopup(x, y, points, isPositive) {
+            const popup = document.createElement('div');
+            popup.className = `score-popup ${isPositive ? 'positive' : 'negative'}`;
+            popup.textContent = isPositive ? `+${points}` : `${points}`;
+            popup.style.left = `${x}px`;
+            popup.style.top = `${y}px`;
+            document.body.appendChild(popup);
+            
+            setTimeout(() => popup.remove(), 1000);
+        }
+
+        function createParticles(x, y, emoji, color, count = 8) {
+            for (let i = 0; i < count; i++) {
+                particles.push(new Particle(x, y, emoji, color));
+            }
+        }
+
+        function showComboDisplay(comboCount) {
+            if (comboCount >= 3) {
+                comboDisplay.textContent = `${comboCount}x 连击!`;
+                comboDisplay.className = 'show';
+                setTimeout(() => {
+                    comboDisplay.className = '';
+                }, 500);
+            }
+        }
+
+        function shakeScreen() {
+            gameContainer.classList.add('shake');
+            setTimeout(() => gameContainer.classList.remove('shake'), 300);
+        }
+
+        // ===== Three.js 初始化 =====
+        function initThree() {
+            scene = new THREE.Scene();
+            
+            // 创建渐变背景
+            const bgCanvas = document.createElement('canvas');
+            bgCanvas.width = 512;
+            bgCanvas.height = 512;
+            const bgCtx = bgCanvas.getContext('2d');
+            const gradient = bgCtx.createRadialGradient(256, 256, 0, 256, 256, 400);
+            gradient.addColorStop(0, '#1a1a3e');
+            gradient.addColorStop(0.5, '#0f1f3d');
+            gradient.addColorStop(1, '#0a0a1a');
+            bgCtx.fillStyle = gradient;
+            bgCtx.fillRect(0, 0, 512, 512);
+            
+            // 添加星星
+            for (let i = 0; i < 100; i++) {
+                const x = Math.random() * 512;
+                const y = Math.random() * 512;
+                const size = Math.random() * 2;
+                const alpha = Math.random() * 0.5 + 0.2;
+                bgCtx.fillStyle = `rgba(255, 255, 255, ${alpha})`;
+                bgCtx.beginPath();
+                bgCtx.arc(x, y, size, 0, Math.PI * 2);
+                bgCtx.fill();
+            }
+            
+            const bgTexture = new THREE.CanvasTexture(bgCanvas);
+            scene.background = bgTexture;
+
+            const aspect = window.innerWidth / window.innerHeight;
+            const size = 5;
+            camera = new THREE.OrthographicCamera(
+                -size * aspect, size * aspect, size, -size, 0.1, 100
+            );
+            camera.position.z = 5;
+
+            renderer = new THREE.WebGLRenderer({ antialias: true });
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+            document.getElementById('game-container').insertBefore(renderer.domElement, document.getElementById('game-container').firstChild);
+
+            window.addEventListener('resize', onWindowResize);
+        }
+
+        function onWindowResize() {
+            const aspect = window.innerWidth / window.innerHeight;
+            const size = 5;
+            camera.left = -size * aspect;
+            camera.right = size * aspect;
+            camera.top = size;
+            camera.bottom = -size;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            
+            trailCanvas.width = window.innerWidth;
+            trailCanvas.height = window.innerHeight;
+            
+            handCanvas.width = handCanvas.clientWidth;
+            handCanvas.height = handCanvas.clientHeight;
+        }
+
+        // ===== 游戏逻辑 =====
+        function startGame() {
+            if (isGameRunning) return;
+            
+            isGameRunning = true;
+            gameState = 'PLAYING';
+            score = 0;
+            combo = 0;
+            maxCombo = 0;
+            fruitsSliced = 0;
+            gameTime = 60;
+            difficulty = 1;
+            
+            // 清除现有对象
+            gameObjects.forEach(obj => scene.remove(obj.mesh));
+            gameObjects = [];
+            particles = [];
+            lastSpawnTime = 0;
+            startEarth = null;
+            
+            // 更新UI
+            startOverlay.style.display = 'none';
+            gameOverOverlay.classList.remove('show');
+            statusDisplay.textContent = '🎮 游戏进行中!';
+            timerDisplay.textContent = `⏱️ ${gameTime}s`;
+            timerDisplay.style.color = '#fff';
+            timerDisplay.classList.remove('warning');
+            updateInfoDisplay();
+            
+            playSound('start');
+        }
+
+        function endGame() {
+            isGameRunning = false;
+            gameState = 'GAME_OVER';
+            
+            // 更新最终统计
+            document.getElementById('final-score-value').textContent = score;
+            document.getElementById('max-combo-value').textContent = maxCombo;
+            document.getElementById('fruits-sliced-value').textContent = fruitsSliced;
+            
+            gameOverOverlay.classList.add('show');
+            statusDisplay.textContent = `🏆 游戏结束! 最终得分: ${score}`;
+            
+            playSound('gameOver');
+            
+            // 2秒后允许重新开始
+            setTimeout(() => {
+                gameState = 'RESTART_READY';
+                statusDisplay.textContent = '✋ 切割 🔄 重新开始!';
+            }, 2000);
+        }
+
+        function restartGame() {
+            // 清除现有对象
+            gameObjects.forEach(obj => scene.remove(obj.mesh));
+            gameObjects = [];
+            particles = [];
+            
+            gameOverOverlay.classList.remove('show');
+            gameState = 'START_SCREEN';
+            setupStartEarth();
+            startOverlay.style.display = 'flex';
+            statusDisplay.textContent = '✋ 切割 🌍 开始游戏!';
+        }
+
+        function updateInfoDisplay() {
+            document.querySelector('.score-value').textContent = score;
+            document.querySelector('.combo-value').textContent = combo;
+        }
+
+        function spawnObject() {
+            const now = performance.now();
+            
+            // 动态调整生成间隔
+            const currentInterval = Math.max(
+                CONFIG.minSpawnInterval,
+                CONFIG.baseSpawnInterval - (difficulty - 1) * 100
+            );
+            
+            if (now < lastSpawnTime + currentInterval) return;
+            lastSpawnTime = now;
+
+            const r = Math.random();
+            let obj;
+
+            if (r < 0.70) {
+                // 水果
+                const fruitType = FRUIT_TYPES[Math.floor(Math.random() * FRUIT_TYPES.length)];
+                obj = new GameObject('FRUIT', fruitType.emoji, fruitType.points, fruitType.color);
+            } else if (r < 0.85) {
+                // 便便
+                obj = new GameObject('POOP', '💩', -20, '#8B4513');
+            } else {
+                // 炸弹
+                obj = new GameObject('BOMB', '💣', -50, '#333333');
+            }
+
+            gameObjects.push(obj);
+        }
+
+        function setupStartEarth() {
+            startEarth = new GameObject('EARTH', '🌍', 0, '#4169E1');
+            startEarth.mesh.position.set(0, 0, 0);
+            startEarth.velocity.set(0, 0, 0);
+            startEarth.rotationSpeed = 0.01;
+            startEarth.isStartScreen = true;
+            gameObjects.push(startEarth);
+        }
+
+        // ===== 检测是否在重新开始区域 =====
+        function isInRestartZone(screenX, screenY) {
+            // 获取重新开始区域的中心位置
+            const rect = restartZone.getBoundingClientRect();
+            const centerX = rect.left + rect.width / 2;
+            const centerY = rect.top + rect.height / 2;
+            
+            // 计算距离
+            const dx = screenX - centerX;
+            const dy = screenY - centerY;
+            const distance = Math.sqrt(dx * dx + dy * dy);
+            
+            return distance < CONFIG.restartZoneRadius;
+        }
+
+        // ===== 碰撞检测 =====
+        let prevFingerPos = new THREE.Vector3();
+        let fingerPos = new THREE.Vector3();
+        let fingerSpeed = 0;
+
+        function checkSliceCollision(screenX, screenY, obj) {
+            const objScreen = obj.getScreenPosition();
+            const scale = obj.mesh.scale.x;
+            const hitRadius = 60 * scale;
+            
+            const dx = screenX - objScreen.x;
+            const dy = screenY - objScreen.y;
+            const distance = Math.sqrt(dx * dx + dy * dy);
+            
+            return distance < hitRadius;
+        }
+
+        function handleKnifeSlice(screenX, screenY) {
+            // 需要一定的速度才能切割
+            if (fingerSpeed < 5) return;
+            
+            // 检测重新开始
+            if (gameState === 'RESTART_READY') {
+                if (isInRestartZone(screenX, screenY)) {
+                    // 创建粒子效果
+                    createParticles(screenX, screenY, '🔄', '#00ff88', 12);
+                    playSound('start');
+                    restartGame();
+                    return;
+                }
+            }
+            
+            const slicedObjects = [];
+            
+            gameObjects.forEach(obj => {
+                if (obj.isSliced) return;
+                
+                if (checkSliceCollision(screenX, screenY, obj)) {
+                    // 开始屏幕
+                    if (obj.type === 'EARTH' && gameState === 'START_SCREEN') {
+                        const screenPos = obj.getScreenPosition();
+                        createParticles(screenPos.x, screenPos.y, '🌍', '#4169E1', 12);
+                        scene.remove(obj.mesh);
+                        obj.isSliced = true;
+                        startGame();
+                        return;
+                    }
+                    
+                    if (gameState !== 'PLAYING') return;
+                    
+                    obj.isSliced = true;
+                    slicedObjects.push(obj);
+                }
+            });
+            
+            // 处理切割结果
+            slicedObjects.forEach(obj => {
+                const screenPos = obj.getScreenPosition();
+                scene.remove(obj.mesh);
+                
+                if (obj.type === 'FRUIT') {
+                    // 水果
+                    const points = obj.points * (1 + Math.floor(combo / 5) * 0.2);
+                    const finalPoints = Math.round(points);
+                    score += finalPoints;
+                    combo++;
+                    fruitsSliced++;
+                    maxCombo = Math.max(maxCombo, combo);
+                    
+                    createScorePopup(screenPos.x, screenPos.y, finalPoints, true);
+                    createParticles(screenPos.x, screenPos.y, obj.emoji, obj.color, 10);
+                    
+                    playSound('slice');
+                    
+                    if (combo >= 3 && combo % 3 === 0) {
+                        playSound('combo');
+                        showComboDisplay(combo);
+                    }
+                    
+                    // 刀效果
+                    knifePointer.classList.add('slicing');
+                    setTimeout(() => knifePointer.classList.remove('slicing'), 150);
+                    
+                } else if (obj.type === 'POOP') {
+                    // 便便
+                    const penalty = obj.points;
+                    score = Math.max(0, score + penalty);
+                    combo = 0;
+                    
+                    createScorePopup(screenPos.x, screenPos.y, penalty, false);
+                    createParticles(screenPos.x, screenPos.y, '💩', '#8B4513', 6);
+                    
+                    playSound('poop');
+                    
+                } else if (obj.type === 'BOMB') {
+                    // 炸弹
+                    const penalty = obj.points;
+                    score = Math.max(0, score + penalty);
+                    combo = 0;
+                    
+                    createScorePopup(screenPos.x, screenPos.y, penalty, false);
+                    createParticles(screenPos.x, screenPos.y, '💥', '#ff4444', 15);
+                    
+                    playSound('bomb');
+                    shakeScreen();
+                    
+                    // 红色闪烁效果
+                    gameContainer.style.boxShadow = 'inset 0 0 100px rgba(255,0,0,0.5)';
+                    setTimeout(() => {
+                        gameContainer.style.boxShadow = 'none';
+                    }, 200);
+                }
+                
+                updateInfoDisplay();
+            });
+            
+            // 清理已切割对象
+            gameObjects = gameObjects.filter(obj => !obj.isSliced);
+        }
+
+        // ===== MediaPipe 初始化 =====
+        function initMediaPipe() {
+            const width = 640;
+            const height = 480;
+            webcamVideo.width = width;
+            webcamVideo.height = height;
+            handCanvas.width = handCanvas.clientWidth;
+            handCanvas.height = handCanvas.clientHeight;
+
+            const hands = new Hands({
+                locateFile: (file) => `./js/hands/${file}`
+            });
+
+            hands.setOptions({
+                maxNumHands: 1,
+                modelComplexity: 1,
+                minDetectionConfidence: 0.7,
+                minTrackingConfidence: 0.7
+            });
+
+            hands.onResults(onResults);
+
+            const cameraMediaPipe = new Camera(webcamVideo, {
+                onFrame: async () => {
+                    await hands.send({ image: webcamVideo });
+                },
+                width: width,
+                height: height
+            });
+            cameraMediaPipe.start();
+
+            let lastFingerX = 0;
+            let lastFingerY = 0;
+
+            function onResults(results) {
+                handCtx.save();
+                handCtx.clearRect(0, 0, handCanvas.width, handCanvas.height);
+                handCtx.scale(-1, 1);
+                handCtx.translate(-handCanvas.width, 0);
+
+                if (results.multiHandLandmarks && results.multiHandLandmarks.length > 0) {
+                    const landmarks = results.multiHandLandmarks[0];
+                    
+                    // 绘制手部骨架
+                    drawConnectors(handCtx, landmarks, HAND_CONNECTIONS,
+                        { color: '#00ff88', lineWidth: 2 });
+                    drawLandmarks(handCtx, landmarks, 
+                        { color: '#ffffff', lineWidth: 1, radius: 3 });
+
+                    // 食指指尖位置
+                    const indexFingerTip = landmarks[8];
+                    
+                    // 映射到屏幕坐标 (镜像处理)
+                    const screenX = (1 - indexFingerTip.x) * window.innerWidth;
+                    const screenY = indexFingerTip.y * window.innerHeight;
+                    
+                    // 计算手指移动速度
+                    fingerSpeed = Math.sqrt(
+                        Math.pow(screenX - lastFingerX, 2) + 
+                        Math.pow(screenY - lastFingerY, 2)
+                    );
+                    
+                    lastFingerX = screenX;
+                    lastFingerY = screenY;
+                    
+                    // 更新刀光指针
+                    knifePointer.style.display = 'block';
+                    knifePointer.style.left = (screenX - 30) + 'px';
+                    knifePointer.style.top = (screenY - 30) + 'px';
+                    
+                    // 添加轨迹点
+                    if (fingerSpeed > 3) {
+                        trailPoints.push(new TrailPoint(screenX, screenY));
+                        if (trailPoints.length > maxTrailPoints) {
+                            trailPoints.shift();
+                        }
+                    }
+                    
+                    // 映射到 3D 场景坐标
+                    const viewportX = screenX / window.innerWidth;
+                    const viewportY = 1 - screenY / window.innerHeight;
+
+                    const vector = new THREE.Vector3(
+                        viewportX * 2 - 1,
+                        viewportY * 2 - 1,
+                        0.5
+                    );
+
+                    vector.unproject(camera);
+                    const dir = vector.sub(camera.position).normalize();
+                    const distance = -camera.position.z / dir.z;
+                    const pos3D = camera.position.clone().add(dir.multiplyScalar(distance));
+
+                    prevFingerPos.copy(fingerPos);
+                    fingerPos.copy(pos3D);
+
+                    // 检测切割
+                    handleKnifeSlice(screenX, screenY);
+                    
+                    // 更新状态显示
+                    if (gameState === 'START_SCREEN') {
+                        statusDisplay.textContent = '✋ 切割 🌍 开始游戏!';
+                    } else if (gameState === 'PLAYING') {
+                        statusDisplay.textContent = '🎮 游戏进行中!';
+                    } else if (gameState === 'RESTART_READY') {
+                        statusDisplay.textContent = '✋ 切割 🔄 重新开始!';
+                    }
+                        
+                } else {
+                    knifePointer.style.display = 'none';
+                    fingerSpeed = 0;
+                }
+
+                handCtx.restore();
+            }
+        }
+
+        // ===== 游戏循环 =====
+        let lastTime = performance.now();
+
+        function animate() {
+            requestAnimationFrame(animate);
+            
+            const currentTime = performance.now();
+            const deltaTime = (currentTime - lastTime) / 1000;
+            lastTime = currentTime;
+
+            if (gameState === 'PLAYING') {
+                spawnObject();
+                
+                // 更新难度
+                difficulty = 1 + Math.floor((60 - gameTime) / 15);
+            }
+            
+            // 更新所有游戏对象
+            gameObjects = gameObjects.filter(obj => obj.update(deltaTime));
+            
+            // 更新和绘制粒子
+            trailCtx.clearRect(0, 0, trailCanvas.width, trailCanvas.height);
+            updateTrail();
+            
+            particles = particles.filter(p => {
+                const alive = p.update();
+                if (alive) p.draw(trailCtx);
+                return alive;
+            });
+
+            renderer.render(scene, camera);
+        }
+
+        // ===== 计时器 =====
+        setInterval(() => {
+            if (isGameRunning && gameTime > 0) {
+                gameTime--;
+                timerDisplay.textContent = `⏱️ ${gameTime}s`;
+                
+                // 时间警告
+                if (gameTime <= 10) {
+                    timerDisplay.classList.add('warning');
+                    timerDisplay.style.color = '#ff4444';
+                } else {
+                    timerDisplay.classList.remove('warning');
+                    timerDisplay.style.color = '#fff';
+                }
+                
+                if (gameTime === 0) {
+                    endGame();
+                }
+            }
+        }, 1000);
+
+        // ===== 初始化 =====
+        window.addEventListener('load', () => {
+            // 设置画布大小
+            trailCanvas.width = window.innerWidth;
+            trailCanvas.height = window.innerHeight;
+            
+            setTimeout(() => {
+                initThree();
+                setupStartEarth();
+                animate();
+                onWindowResize();
+                statusDisplay.textContent = '✋ 准备中... 请允许摄像头访问';
+                initMediaPipe();
+            }, 500);
+        });
+
+        // 鼠标/触摸调试模式 (用于测试)
+        let debugMode = false;
+        document.addEventListener('keydown', (e) => {
+            if (e.key === 'd') {
+                debugMode = !debugMode;
+                console.log('Debug mode:', debugMode);
+                if (debugMode) {
+                    statusDisplay.textContent = '🔧 调试模式开启 - 使用鼠标测试';
+                }
+            }
+        });
+
+        document.addEventListener('mousemove', (e) => {
+            if (!debugMode) return;
+            
+            const screenX = e.clientX;
+            const screenY = e.clientY;
+            fingerSpeed = 20;
+            
+            knifePointer.style.display = 'block';
+            knifePointer.style.left = (screenX - 30) + 'px';
+            knifePointer.style.top = (screenY - 30) + 'px';
+            
+            trailPoints.push(new TrailPoint(screenX, screenY));
+            if (trailPoints.length > maxTrailPoints) {
+                trailPoints.shift();
+            }
+            
+            handleKnifeSlice(screenX, screenY);
+        });
+    </script>
+</body>
+</html>

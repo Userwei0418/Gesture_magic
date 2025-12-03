@@ -1,0 +1,1353 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AR 手势射击 - 击碎飞盘</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { 
+            width: 100%;
+            height: 100vh;
+            overflow: hidden; 
+            background: #000;
+            font-family: 'Courier New', monospace;
+        }
+        
+        #game-container {
+            position: relative;
+            width: 100%;
+            height: 100%;
+        }
+        
+        canvas { display: block; }
+        
+        /* 加载屏幕 */
+        #loading-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: linear-gradient(135deg, #0a0a2e 0%, #16213e 100%);
+            z-index: 1000;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            color: white;
+            transition: opacity 0.5s ease;
+        }
+        
+        #loading-overlay.hidden {
+            opacity: 0;
+            pointer-events: none;
+        }
+        
+        .loading-spinner {
+            width: 60px;
+            height: 60px;
+            border: 4px solid rgba(0, 255, 136, 0.3);
+            border-top-color: #00ff88;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+            margin-bottom: 30px;
+        }
+        
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+        
+        #loading-text {
+            font-size: 20px;
+            color: #00ff88;
+            text-align: center;
+            text-shadow: 0 0 10px #00ff88;
+        }
+        
+        .loading-bar {
+            width: 200px;
+            height: 4px;
+            background: rgba(0, 255, 136, 0.2);
+            border-radius: 2px;
+            margin-top: 20px;
+            overflow: hidden;
+        }
+        
+        .loading-bar-inner {
+            height: 100%;
+            background: linear-gradient(90deg, #00ff88, #00cc6f);
+            width: 0%;
+            transition: width 0.3s ease;
+            box-shadow: 0 0 10px #00ff88;
+        }
+        
+        /* UI */
+        #hud {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
+            z-index: 10;
+        }
+        
+        #score-display {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            font-size: 24px;
+            color: #00ff88;
+            text-shadow: 0 0 20px #00ff88;
+            z-index: 11;
+            background: rgba(0, 0, 0, 0.7);
+            padding: 12px 20px;
+            border: 2px solid #00ff88;
+            border-radius: 5px;
+        }
+        
+        #combo-display {
+            position: absolute;
+            top: 80px;
+            left: 20px;
+            font-size: 18px;
+            color: #ffcc00;
+            text-shadow: 0 0 15px #ffcc00;
+            z-index: 11;
+            background: rgba(0, 0, 0, 0.7);
+            padding: 8px 16px;
+            border: 2px solid #ffcc00;
+            border-radius: 5px;
+            opacity: 0;
+            transition: opacity 0.3s ease;
+        }
+        
+        #combo-display.active {
+            opacity: 1;
+        }
+        
+        #ammo-display {
+            position: absolute;
+            top: 20px;
+            right: 20px;
+            font-size: 20px;
+            color: #ff4444;
+            text-shadow: 0 0 15px #ff4444;
+            z-index: 11;
+            background: rgba(0, 0, 0, 0.7);
+            padding: 12px 20px;
+            border: 2px solid #ff4444;
+            border-radius: 5px;
+        }
+        
+        #wave-display {
+            position: absolute;
+            top: 80px;
+            right: 20px;
+            font-size: 16px;
+            color: #00ccff;
+            text-shadow: 0 0 10px #00ccff;
+            z-index: 11;
+            background: rgba(0, 0, 0, 0.7);
+            padding: 8px 16px;
+            border: 2px solid #00ccff;
+            border-radius: 5px;
+        }
+        
+        #status-text {
+            position: absolute;
+            bottom: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            font-size: 16px;
+            color: #00ff88;
+            background: rgba(0, 0, 0, 0.8);
+            padding: 10px 20px;
+            border-radius: 5px;
+            text-align: center;
+            max-width: 90%;
+        }
+        
+        #gesture-indicator {
+            position: absolute;
+            bottom: 80px;
+            left: 50%;
+            transform: translateX(-50%);
+            font-size: 48px;
+            opacity: 0.8;
+            transition: transform 0.2s ease, opacity 0.2s ease;
+        }
+        
+        #gesture-indicator.firing {
+            transform: translateX(-50%) scale(1.3);
+            opacity: 1;
+        }
+        
+        /* 调试信息 */
+        #debug-info {
+            position: absolute;
+            top: 140px;
+            left: 20px;
+            font-size: 12px;
+            color: #00ff88;
+            background: rgba(0, 0, 0, 0.7);
+            padding: 8px 12px;
+            border-radius: 5px;
+            z-index: 11;
+            max-width: 200px;
+            line-height: 1.5;
+        }
+        
+        /* 摄像头 */
+        #webcam-container {
+            position: absolute;
+            bottom: 100px;
+            right: 20px;
+            width: 180px;
+            height: 135px;
+            border: 2px solid #00ff88;
+            background: #000;
+            overflow: hidden;
+            border-radius: 5px;
+            z-index: 11;
+            box-shadow: 0 0 20px rgba(0, 255, 136, 0.3);
+        }
+        
+        #webcam {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+            transform: scaleX(-1);
+        }
+        
+        #hand-canvas {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            transform: scaleX(-1);
+        }
+        
+        /* 特效 */
+        .hit-effect {
+            position: fixed;
+            font-size: 36px;
+            font-weight: bold;
+            pointer-events: none;
+            animation: hitFloat 0.8s ease-out forwards;
+            z-index: 100;
+        }
+        
+        .hit-effect.hit {
+            color: #00ff88;
+            text-shadow: 0 0 20px #00ff88;
+        }
+        
+        .hit-effect.miss {
+            color: #ff4444;
+            text-shadow: 0 0 20px #ff4444;
+        }
+        
+        .hit-effect.combo {
+            color: #ffcc00;
+            text-shadow: 0 0 25px #ffcc00;
+            font-size: 48px;
+        }
+        
+        @keyframes hitFloat {
+            0% { opacity: 1; transform: scale(0.5) translateY(0); }
+            50% { opacity: 1; transform: scale(1.2) translateY(-30px); }
+            100% { opacity: 0; transform: scale(1) translateY(-60px); }
+        }
+        
+        .muzzle-flash {
+            position: fixed;
+            width: 50px;
+            height: 50px;
+            background: radial-gradient(circle, #ffffff, #ffff00, #ff8800);
+            border-radius: 50%;
+            pointer-events: none;
+            animation: muzzleFlash 0.15s ease-out forwards;
+            box-shadow: 0 0 40px #ffff00;
+            z-index: 100;
+        }
+        
+        @keyframes muzzleFlash {
+            0% { opacity: 1; transform: translate(-50%, -50%) scale(1); }
+            100% { opacity: 0; transform: translate(-50%, -50%) scale(2.5); }
+        }
+        
+        /* 屏幕震动 */
+        @keyframes screenShake {
+            0%, 100% { transform: translate(0, 0); }
+            25% { transform: translate(-5px, 5px); }
+            50% { transform: translate(5px, -5px); }
+            75% { transform: translate(-5px, -5px); }
+        }
+        
+        .screen-shake {
+            animation: screenShake 0.1s ease-in-out;
+        }
+        
+        /* 指示线画布 */
+        #laser-canvas {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
+            z-index: 9;
+        }
+        
+        /* 粒子爆炸 */
+        .particle {
+            position: fixed;
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            pointer-events: none;
+            z-index: 90;
+        }
+        
+        /* 难度提示 */
+        #wave-announcement {
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            font-size: 48px;
+            color: #00ccff;
+            text-shadow: 0 0 30px #00ccff;
+            opacity: 0;
+            pointer-events: none;
+            z-index: 150;
+            transition: opacity 0.3s ease;
+        }
+        
+        #wave-announcement.active {
+            opacity: 1;
+            animation: waveAnnounce 2s ease-out forwards;
+        }
+        
+        @keyframes waveAnnounce {
+            0% { opacity: 0; transform: translate(-50%, -50%) scale(0.5); }
+            20% { opacity: 1; transform: translate(-50%, -50%) scale(1.2); }
+            80% { opacity: 1; transform: translate(-50%, -50%) scale(1); }
+            100% { opacity: 0; transform: translate(-50%, -50%) scale(1); }
+        }
+    </style>
+</head>
+<body>
+    <div id="loading-overlay">
+        <div class="loading-spinner"></div>
+        <div id="loading-text">加载模型中...</div>
+        <div class="loading-bar">
+            <div class="loading-bar-inner" id="progress-bar"></div>
+        </div>
+    </div>
+
+    <div id="game-container">
+        <canvas id="laser-canvas"></canvas>
+        
+        <div id="hud">
+            <div id="score-display">🎯 得分: 0</div>
+            <div id="combo-display">🔥 连击: x1</div>
+            <div id="ammo-display">💥 弹药: ∞</div>
+            <div id="wave-display">🌊 波次: 1</div>
+            <div id="debug-info">手势: 等待检测...</div>
+            <div id="status-text">🔥 用手枪手势瞄准并开火!</div>
+            <div id="gesture-indicator">👋</div>
+        </div>
+        
+        <div id="webcam-container">
+            <video id="webcam" autoplay muted playsinline></video>
+            <canvas id="hand-canvas"></canvas>
+        </div>
+        
+        <div id="wave-announcement"></div>
+    </div>
+
+    <!-- MediaPipe 资源 -->
+    <script src="./js/camera_utils.js"></script>
+    <script src="./js/drawing_utils.js"></script>
+    <script src="./js/hands.js"></script>
+    <script src="./js/three.min.js"></script>
+
+    <script>
+        'use strict';
+
+        // ===== 全局配置 =====
+        const CONFIG = {
+            BASE_MAX_ENEMIES: 3,
+            BASE_ENEMY_SPEED: 0.02,
+            SPAWN_RADIUS: 6,
+            CENTER_RADIUS: 0.8,
+            HIT_RANGE: 120,
+            FIRE_COOLDOWN: 300,
+            COMBO_TIMEOUT: 2000,
+            WAVE_DURATION: 30000
+        };
+
+        // ===== 游戏状态 =====
+        let scene, camera, renderer;
+        let score = 0;
+        let combo = 0;
+        let maxCombo = 0;
+        let totalShots = 0;
+        let totalHits = 0;
+        let wave = 1;
+        let gameRunning = false;
+        let gamePaused = false;
+        let enemies = [];
+        
+        let lastFireTime = 0;
+        let lastComboTime = 0;
+        let gestureState = 'idle';
+        let gunPosition = { x: window.innerWidth / 2, y: window.innerHeight / 2 };
+        let smoothedGunPosition = { x: window.innerWidth / 2, y: window.innerHeight / 2 };
+        let targetEnemy = null;
+        let handDetected = false;
+
+        const canvas2d = document.getElementById('laser-canvas');
+        const ctx2d = canvas2d.getContext('2d');
+        const webcamVideo = document.getElementById('webcam');
+        const handCanvas = document.getElementById('hand-canvas');
+        const handCtx = handCanvas.getContext('2d');
+
+        // 音频上下文
+        let audioCtx = null;
+
+        // ===== 工具函数 =====
+        function updateLoadingProgress(percent) {
+            document.getElementById('progress-bar').style.width = percent + '%';
+        }
+
+        function hideLoadingScreen() {
+            document.getElementById('loading-overlay').classList.add('hidden');
+        }
+
+        function log(msg) {
+            console.log('[射击游戏]', msg);
+        }
+
+        function initAudio() {
+            if (!audioCtx) {
+                audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+            }
+            if (audioCtx.state === 'suspended') {
+                audioCtx.resume();
+            }
+        }
+
+        // 平滑插值
+        function lerp(a, b, t) {
+            return a + (b - a) * t;
+        }
+
+        // ===== 音效 =====
+        function playShootSound() {
+            if (!audioCtx) return;
+            try {
+                const now = audioCtx.currentTime;
+                const osc = audioCtx.createOscillator();
+                const gain = audioCtx.createGain();
+                const noise = audioCtx.createOscillator();
+                const noiseGain = audioCtx.createGain();
+                
+                osc.type = 'sawtooth';
+                osc.frequency.setValueAtTime(800, now);
+                osc.frequency.exponentialRampToValueAtTime(100, now + 0.08);
+                
+                gain.gain.setValueAtTime(0.3, now);
+                gain.gain.exponentialRampToValueAtTime(0.01, now + 0.08);
+                
+                noise.type = 'square';
+                noise.frequency.setValueAtTime(100, now);
+                noiseGain.gain.setValueAtTime(0.1, now);
+                noiseGain.gain.exponentialRampToValueAtTime(0.01, now + 0.05);
+                
+                osc.connect(gain);
+                noise.connect(noiseGain);
+                gain.connect(audioCtx.destination);
+                noiseGain.connect(audioCtx.destination);
+                
+                osc.start(now);
+                noise.start(now);
+                osc.stop(now + 0.1);
+                noise.stop(now + 0.05);
+            } catch (e) {}
+        }
+
+        function playHitSound() {
+            if (!audioCtx) return;
+            try {
+                const now = audioCtx.currentTime;
+                const osc = audioCtx.createOscillator();
+                const gain = audioCtx.createGain();
+                
+                osc.type = 'sine';
+                osc.frequency.setValueAtTime(1500, now);
+                osc.frequency.exponentialRampToValueAtTime(800, now + 0.1);
+                
+                gain.gain.setValueAtTime(0.4, now);
+                gain.gain.exponentialRampToValueAtTime(0.01, now + 0.15);
+                
+                osc.connect(gain);
+                gain.connect(audioCtx.destination);
+                osc.start(now);
+                osc.stop(now + 0.15);
+            } catch (e) {}
+        }
+
+        function playComboSound(comboLevel) {
+            if (!audioCtx) return;
+            try {
+                const now = audioCtx.currentTime;
+                const baseFreq = 400 + comboLevel * 100;
+                
+                for (let i = 0; i < 3; i++) {
+                    const osc = audioCtx.createOscillator();
+                    const gain = audioCtx.createGain();
+                    osc.type = 'sine';
+                    osc.frequency.setValueAtTime(baseFreq + i * 200, now + i * 0.05);
+                    gain.gain.setValueAtTime(0.2, now + i * 0.05);
+                    gain.gain.exponentialRampToValueAtTime(0.01, now + i * 0.05 + 0.1);
+                    osc.connect(gain);
+                    gain.connect(audioCtx.destination);
+                    osc.start(now + i * 0.05);
+                    osc.stop(now + i * 0.05 + 0.1);
+                }
+            } catch (e) {}
+        }
+
+        // ===== 敌人类 =====
+        class Enemy {
+            constructor(speedMultiplier = 1) {
+                const angle = Math.random() * Math.PI * 2;
+                const distance = CONFIG.SPAWN_RADIUS;
+                
+                this.x = Math.cos(angle) * distance;
+                this.y = Math.sin(angle) * distance;
+                
+                const towardCenter = Math.atan2(-this.y, -this.x);
+                const speed = CONFIG.BASE_ENEMY_SPEED * speedMultiplier;
+                this.vx = Math.cos(towardCenter) * speed;
+                this.vy = Math.sin(towardCenter) * speed;
+                
+                this.size = 0.5 + Math.random() * 0.2;
+                this.rotation = Math.random() * Math.PI * 2;
+                this.rotationSpeed = (Math.random() - 0.5) * 0.15;
+                this.health = 1;
+                this.points = Math.floor(50 + speedMultiplier * 50);
+                this.color = this.getRandomColor();
+                
+                this.createMesh();
+            }
+
+            getRandomColor() {
+                const colors = ['#ff6b6b', '#ff8e53', '#feca57', '#48dbfb', '#ff9ff3'];
+                return colors[Math.floor(Math.random() * colors.length)];
+            }
+
+            createMesh() {
+                const canvas = document.createElement('canvas');
+                canvas.width = canvas.height = 128;
+                const ctx = canvas.getContext('2d');
+                
+                // 绘制飞盘
+                const gradient = ctx.createRadialGradient(64, 64, 0, 64, 64, 60);
+                gradient.addColorStop(0, this.color);
+                gradient.addColorStop(0.7, this.color);
+                gradient.addColorStop(1, '#000');
+                
+                ctx.fillStyle = gradient;
+                ctx.beginPath();
+                ctx.arc(64, 64, 60, 0, Math.PI * 2);
+                ctx.fill();
+                
+                // 中心标记
+                ctx.fillStyle = '#fff';
+                ctx.beginPath();
+                ctx.arc(64, 64, 15, 0, Math.PI * 2);
+                ctx.fill();
+                
+                // 边缘高光
+                ctx.strokeStyle = 'rgba(255,255,255,0.5)';
+                ctx.lineWidth = 3;
+                ctx.beginPath();
+                ctx.arc(64, 64, 55, -Math.PI * 0.3, Math.PI * 0.3);
+                ctx.stroke();
+
+                const texture = new THREE.CanvasTexture(canvas);
+                const material = new THREE.SpriteMaterial({ 
+                    map: texture,
+                    transparent: true
+                });
+                this.sprite = new THREE.Sprite(material);
+                this.sprite.scale.set(this.size, this.size, 1);
+                scene.add(this.sprite);
+            }
+
+            update() {
+                this.x += this.vx;
+                this.y += this.vy;
+                this.rotation += this.rotationSpeed;
+                
+                this.sprite.position.set(this.x, this.y, 0);
+                this.sprite.material.rotation = this.rotation;
+                
+                // 检查是否到达中心 - 不再造成伤害，只是消失
+                const distToCenter = Math.sqrt(this.x * this.x + this.y * this.y);
+                if (distToCenter < CONFIG.CENTER_RADIUS) {
+                    return 'reached';
+                }
+                
+                return 'alive';
+            }
+
+            getScreenPosition() {
+                const vector = this.sprite.position.clone().project(camera);
+                return {
+                    x: (vector.x + 1) / 2 * window.innerWidth,
+                    y: (-vector.y + 1) / 2 * window.innerHeight
+                };
+            }
+
+            remove() {
+                scene.remove(this.sprite);
+                if (this.sprite.material.map) {
+                    this.sprite.material.map.dispose();
+                }
+                this.sprite.material.dispose();
+            }
+        }
+
+        // ===== Three.js 初始化 =====
+        function initThree() {
+            scene = new THREE.Scene();
+            
+            // 创建星空背景
+            const starGeometry = new THREE.BufferGeometry();
+            const starCount = 1000;
+            const positions = new Float32Array(starCount * 3);
+            for (let i = 0; i < starCount * 3; i += 3) {
+                positions[i] = (Math.random() - 0.5) * 100;
+                positions[i + 1] = (Math.random() - 0.5) * 100;
+                positions[i + 2] = -50 + Math.random() * 50;
+            }
+            starGeometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+            const starMaterial = new THREE.PointsMaterial({ color: 0xffffff, size: 0.1 });
+            const stars = new THREE.Points(starGeometry, starMaterial);
+            scene.add(stars);
+
+            scene.background = new THREE.Color(0x0a0a1a);
+
+            const aspect = window.innerWidth / window.innerHeight;
+            const size = 5;
+            camera = new THREE.OrthographicCamera(
+                -size * aspect, size * aspect, size, -size, 0.1, 100
+            );
+            camera.position.z = 5;
+
+            renderer = new THREE.WebGLRenderer({ antialias: true });
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+            document.getElementById('game-container').insertBefore(
+                renderer.domElement, 
+                document.getElementById('game-container').firstChild
+            );
+
+            // 2D画布设置
+            canvas2d.width = window.innerWidth;
+            canvas2d.height = window.innerHeight;
+            
+            handCanvas.width = 180;
+            handCanvas.height = 135;
+
+            // 添加中心目标区域
+            const centerGeometry = new THREE.RingGeometry(CONFIG.CENTER_RADIUS - 0.1, CONFIG.CENTER_RADIUS, 32);
+            const centerMaterial = new THREE.MeshBasicMaterial({ 
+                color: 0x00ff88, 
+                transparent: true, 
+                opacity: 0.3,
+                side: THREE.DoubleSide
+            });
+            const centerRing = new THREE.Mesh(centerGeometry, centerMaterial);
+            scene.add(centerRing);
+
+            window.addEventListener('resize', onWindowResize);
+        }
+
+        function onWindowResize() {
+            const aspect = window.innerWidth / window.innerHeight;
+            const size = 5;
+            camera.left = -size * aspect;
+            camera.right = size * aspect;
+            camera.top = size;
+            camera.bottom = -size;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            
+            canvas2d.width = window.innerWidth;
+            canvas2d.height = window.innerHeight;
+        }
+
+        // ===== 手势识别 =====
+        function isGunGesture(landmarks) {
+            if (!landmarks || landmarks.length < 21) return false;
+            
+            try {
+                // 食指伸直检测 - 食指尖比食指根部更高（y值更小）
+                const indexTip = landmarks[8];
+                const indexPIP = landmarks[6];
+                const indexMCP = landmarks[5];
+                
+                // 食指伸直：指尖y < 指节y
+                const indexExtended = indexTip.y < indexPIP.y;
+                
+                // 中指弯曲：中指尖y > 中指PIP y
+                const middleTip = landmarks[12];
+                const middlePIP = landmarks[10];
+                const middleBent = middleTip.y > middlePIP.y;
+                
+                // 无名指弯曲
+                const ringTip = landmarks[16];
+                const ringPIP = landmarks[14];
+                const ringBent = ringTip.y > ringPIP.y;
+                
+                // 小指弯曲
+                const pinkyTip = landmarks[20];
+                const pinkyPIP = landmarks[18];
+                const pinkyBent = pinkyTip.y > pinkyPIP.y;
+                
+                return indexExtended && middleBent && ringBent && pinkyBent;
+            } catch (e) {
+                return false;
+            }
+        }
+
+        function isFireGesture(landmarks) {
+            if (!landmarks || landmarks.length < 21) return false;
+            
+            try {
+                // 大拇指向下弯曲 = 开火
+                const thumbTip = landmarks[4];
+                const thumbIP = landmarks[3];
+                const indexMCP = landmarks[5];
+                const wrist = landmarks[0];
+                
+                // 检测拇指是否向内收拢（拇指尖接近食指根部）
+                const thumbToIndex = Math.sqrt(
+                    Math.pow(thumbTip.x - indexMCP.x, 2) + 
+                    Math.pow(thumbTip.y - indexMCP.y, 2)
+                );
+                
+                // 或者检测拇指是否向下弯曲
+                const thumbBent = thumbTip.y > thumbIP.y;
+                
+                return thumbToIndex < 0.1 || thumbBent;
+            } catch (e) {
+                return false;
+            }
+        }
+
+        // ===== MediaPipe 初始化 =====
+        async function initMediaPipe() {
+            return new Promise((resolve, reject) => {
+            
+            const hands = new Hands({
+                locateFile: (file) => `./js/hands/${file}`
+            });
+                
+                hands.setOptions({
+                    maxNumHands: 1,
+                    modelComplexity: 1,
+                    minDetectionConfidence: 0.7,
+                    minTrackingConfidence: 0.6
+                });
+
+                let prevFireState = false;
+
+                hands.onResults((results) => {
+                    try {
+                        handCtx.clearRect(0, 0, handCanvas.width, handCanvas.height);
+
+                        if (results.multiHandLandmarks && results.multiHandLandmarks.length > 0) {
+                            handDetected = true;
+                            const landmarks = results.multiHandLandmarks[0];
+                            
+                            // 绘制手部骨架
+                            drawConnectors(handCtx, landmarks, HAND_CONNECTIONS,
+                                { color: '#00ff88', lineWidth: 2 });
+                            drawLandmarks(handCtx, landmarks,
+                                { color: '#ffffff', lineWidth: 1, radius: 3 });
+
+                            // 食指尖位置 - 镜像翻转X坐标
+                            const indexTip = landmarks[8];
+                            // 因为视频是镜像的，所以X坐标需要翻转
+                            const screenX = (1 - indexTip.x) * window.innerWidth;
+                            const screenY = indexTip.y * window.innerHeight;
+                            
+                            gunPosition.x = screenX;
+                            gunPosition.y = screenY;
+                            
+                            // 检测手枪手势
+                            const isGun = isGunGesture(landmarks);
+                            const isFire = isFireGesture(landmarks);
+                            
+                            // 更新调试信息
+                            const debugInfo = document.getElementById('debug-info');
+                            debugInfo.innerHTML = `
+                                手势: ${isGun ? '🔫手枪' : '✋普通'}<br>
+                                开火: ${isFire ? '💥是' : '❌否'}<br>
+                                位置: ${Math.round(screenX)}, ${Math.round(screenY)}<br>
+                                状态: ${gestureState}
+                            `;
+                            
+                            if (!isGun) {
+                                gestureState = 'idle';
+                                prevFireState = false;
+                            } else {
+                                if (isFire && !prevFireState) {
+                                    const now = Date.now();
+                                    if (now - lastFireTime > CONFIG.FIRE_COOLDOWN) {
+                                        gestureState = 'fired';
+                                        lastFireTime = now;
+                                        fireGun(screenX, screenY);
+                                    }
+                                } else if (!isFire) {
+                                    gestureState = 'aiming';
+                                }
+                                prevFireState = isFire;
+                            }
+                            
+                            updateGestureIndicator();
+                            
+                        } else {
+                            handDetected = false;
+                            gestureState = 'idle';
+                            updateGestureIndicator();
+                            
+                            const debugInfo = document.getElementById('debug-info');
+                            debugInfo.innerHTML = '手势: 未检测到手';
+                        }
+                    } catch (e) {
+                        console.error('手势处理错误:', e);
+                    }
+                });
+
+                const cameraInstance = new Camera(webcamVideo, {
+                    onFrame: async () => {
+                        if (!gamePaused) {
+                            await hands.send({ image: webcamVideo });
+                        }
+                    },
+                    width: 640,
+                    height: 480
+                });
+                
+                cameraInstance.start()
+                    .then(() => {
+                        log('摄像头已启动');
+                        resolve();
+                    })
+                    .catch((e) => {
+                        console.error('摄像头启动失败:', e);
+                        reject(e);
+                    });
+            });
+        }
+
+        function updateGestureIndicator() {
+            const indicator = document.getElementById('gesture-indicator');
+            
+            if (!handDetected) {
+                indicator.textContent = '❓';
+                indicator.classList.remove('firing');
+            } else if (gestureState === 'idle') {
+                indicator.textContent = '👋';
+                indicator.classList.remove('firing');
+            } else if (gestureState === 'aiming') {
+                indicator.textContent = '🔫';
+                indicator.classList.remove('firing');
+            } else if (gestureState === 'fired') {
+                indicator.textContent = '💥';
+                indicator.classList.add('firing');
+                setTimeout(() => indicator.classList.remove('firing'), 150);
+            }
+        }
+
+        // ===== 射击逻辑 =====
+        function fireGun(screenX, screenY) {
+            if (!gameRunning) return;
+            
+            initAudio();
+            playShootSound();
+            totalShots++;
+            
+            // 屏幕震动
+            document.getElementById('game-container').classList.add('screen-shake');
+            setTimeout(() => {
+                document.getElementById('game-container').classList.remove('screen-shake');
+            }, 100);
+            
+            // 枪口闪光
+            const flash = document.createElement('div');
+            flash.className = 'muzzle-flash';
+            flash.style.left = screenX + 'px';
+            flash.style.top = screenY + 'px';
+            document.body.appendChild(flash);
+            setTimeout(() => flash.remove(), 200);
+            
+            // 检测命中
+            let hitEnemy = null;
+            let minDist = CONFIG.HIT_RANGE;
+            
+            for (let enemy of enemies) {
+                const enemyScreen = enemy.getScreenPosition();
+                const dist = Math.sqrt(
+                    Math.pow(screenX - enemyScreen.x, 2) + 
+                    Math.pow(screenY - enemyScreen.y, 2)
+                );
+                
+                if (dist < minDist) {
+                    minDist = dist;
+                    hitEnemy = enemy;
+                }
+            }
+            
+            if (hitEnemy) {
+                totalHits++;
+                
+                // 更新连击
+                const now = Date.now();
+                if (now - lastComboTime < CONFIG.COMBO_TIMEOUT) {
+                    combo++;
+                    if (combo > maxCombo) maxCombo = combo;
+                    if (combo >= 3) {
+                        playComboSound(combo);
+                    }
+                } else {
+                    combo = 1;
+                }
+                lastComboTime = now;
+                
+                // 计算得分 (含连击加成)
+                const comboMultiplier = 1 + (combo - 1) * 0.5;
+                const points = Math.floor(hitEnemy.points * comboMultiplier);
+                score += points;
+                
+                playHitSound();
+                
+                // 创建粒子爆炸
+                createExplosion(hitEnemy.getScreenPosition(), hitEnemy.color);
+                
+                // HIT 特效
+                const enemyScreen = hitEnemy.getScreenPosition();
+                const hitEffect = document.createElement('div');
+                hitEffect.className = combo >= 3 ? 'hit-effect combo' : 'hit-effect hit';
+                hitEffect.textContent = combo >= 3 ? `${combo}x COMBO!` : `+${points}`;
+                hitEffect.style.left = enemyScreen.x + 'px';
+                hitEffect.style.top = enemyScreen.y + 'px';
+                document.body.appendChild(hitEffect);
+                setTimeout(() => hitEffect.remove(), 800);
+                
+                hitEnemy.remove();
+                enemies.splice(enemies.indexOf(hitEnemy), 1);
+                
+                // 更新UI
+                updateUI();
+            } else {
+                combo = 0;
+                
+                // MISS 特效
+                const missEffect = document.createElement('div');
+                missEffect.className = 'hit-effect miss';
+                missEffect.textContent = 'MISS';
+                missEffect.style.left = screenX + 'px';
+                missEffect.style.top = screenY + 'px';
+                document.body.appendChild(missEffect);
+                setTimeout(() => missEffect.remove(), 800);
+                
+                updateUI();
+            }
+        }
+
+        function createExplosion(pos, color) {
+            const particleCount = 12;
+            for (let i = 0; i < particleCount; i++) {
+                const particle = document.createElement('div');
+                particle.className = 'particle';
+                particle.style.backgroundColor = color;
+                particle.style.left = pos.x + 'px';
+                particle.style.top = pos.y + 'px';
+                
+                const angle = (i / particleCount) * Math.PI * 2;
+                const speed = 100 + Math.random() * 100;
+                const vx = Math.cos(angle) * speed;
+                const vy = Math.sin(angle) * speed;
+                
+                document.body.appendChild(particle);
+                
+                let startTime = Date.now();
+                const animate = () => {
+                    const elapsed = (Date.now() - startTime) / 1000;
+                    if (elapsed > 0.5) {
+                        particle.remove();
+                        return;
+                    }
+                    
+                    const x = pos.x + vx * elapsed;
+                    const y = pos.y + vy * elapsed + 200 * elapsed * elapsed;
+                    particle.style.left = x + 'px';
+                    particle.style.top = y + 'px';
+                    particle.style.opacity = 1 - elapsed * 2;
+                    
+                    requestAnimationFrame(animate);
+                };
+                animate();
+            }
+        }
+
+        function updateUI() {
+            document.getElementById('score-display').textContent = `🎯 得分: ${score}`;
+            
+            const comboDisplay = document.getElementById('combo-display');
+            if (combo >= 2) {
+                comboDisplay.textContent = `🔥 连击: x${combo}`;
+                comboDisplay.classList.add('active');
+            } else {
+                comboDisplay.classList.remove('active');
+            }
+            
+            document.getElementById('wave-display').textContent = `🌊 波次: ${wave}`;
+        }
+
+        function restartGame() {
+            // 清除敌人
+            enemies.forEach(e => e.remove());
+            enemies = [];
+            
+            // 重置状态
+            score = 0;
+            combo = 0;
+            maxCombo = 0;
+            totalShots = 0;
+            totalHits = 0;
+            wave = 1;
+            
+            updateUI();
+            gameRunning = true;
+        }
+
+        // ===== 波次系统 =====
+        let waveStartTime = 0;
+        let lastSpawnTime = 0;
+
+        function updateWave() {
+            const now = Date.now();
+            
+            if (now - waveStartTime > CONFIG.WAVE_DURATION) {
+                wave++;
+                waveStartTime = now;
+                
+                // 显示波次提示
+                const announcement = document.getElementById('wave-announcement');
+                announcement.textContent = `🌊 第 ${wave} 波!`;
+                announcement.classList.add('active');
+                setTimeout(() => announcement.classList.remove('active'), 2000);
+                
+                updateUI();
+            }
+        }
+
+        function getWaveConfig() {
+            return {
+                maxEnemies: CONFIG.BASE_MAX_ENEMIES + Math.floor(wave / 2),
+                speedMultiplier: 1 + (wave - 1) * 0.15,
+                spawnInterval: Math.max(800, 2000 - wave * 150)
+            };
+        }
+
+        // ===== 游戏循环 =====
+        function spawnEnemy() {
+            const config = getWaveConfig();
+            const now = Date.now();
+            
+            if (enemies.length < config.maxEnemies && now - lastSpawnTime > config.spawnInterval) {
+                enemies.push(new Enemy(config.speedMultiplier));
+                lastSpawnTime = now;
+            }
+        }
+
+        function drawCrosshair() {
+            ctx2d.clearRect(0, 0, canvas2d.width, canvas2d.height);
+            
+            // 只要检测到手就显示准星，无论什么手势
+            if (!handDetected) return;
+            
+            // 平滑准星位置
+            smoothedGunPosition.x = lerp(smoothedGunPosition.x, gunPosition.x, 0.3);
+            smoothedGunPosition.y = lerp(smoothedGunPosition.y, gunPosition.y, 0.3);
+            
+            // 根据手势状态决定准星颜色
+            let crosshairColor = '#00ff88'; // 默认绿色（普通手势）
+            let crosshairSize = 25;
+            let lineWidth = 2;
+            
+            if (gestureState === 'aiming') {
+                crosshairColor = '#ff0000'; // 红色（瞄准中）
+                crosshairSize = 30;
+                lineWidth = 3;
+            } else if (gestureState === 'fired') {
+                crosshairColor = '#ffff00'; // 黄色（刚开火）
+                crosshairSize = 35;
+                lineWidth = 4;
+            }
+            
+            const x = smoothedGunPosition.x;
+            const y = smoothedGunPosition.y;
+            
+            // 绘制外圈
+            ctx2d.strokeStyle = crosshairColor;
+            ctx2d.lineWidth = lineWidth;
+            ctx2d.shadowColor = crosshairColor;
+            ctx2d.shadowBlur = 10;
+            
+            ctx2d.beginPath();
+            ctx2d.arc(x, y, crosshairSize, 0, Math.PI * 2);
+            ctx2d.stroke();
+            
+            // 绘制十字线
+            const crossLength = crosshairSize + 15;
+            const gapSize = crosshairSize - 10;
+            
+            ctx2d.beginPath();
+            // 上
+            ctx2d.moveTo(x, y - gapSize);
+            ctx2d.lineTo(x, y - crossLength);
+            // 下
+            ctx2d.moveTo(x, y + gapSize);
+            ctx2d.lineTo(x, y + crossLength);
+            // 左
+            ctx2d.moveTo(x - gapSize, y);
+            ctx2d.lineTo(x - crossLength, y);
+            // 右
+            ctx2d.moveTo(x + gapSize, y);
+            ctx2d.lineTo(x + crossLength, y);
+            ctx2d.stroke();
+            
+            // 绘制中心点
+            ctx2d.fillStyle = crosshairColor;
+            ctx2d.beginPath();
+            ctx2d.arc(x, y, 4, 0, Math.PI * 2);
+            ctx2d.fill();
+            
+            // 重置阴影
+            ctx2d.shadowBlur = 0;
+            
+            // 如果是瞄准状态，显示目标锁定
+            if (gestureState === 'aiming' || gestureState === 'fired') {
+                // 找最近的敌人
+                let closestEnemy = null;
+                let minDist = 250;
+                
+                for (let enemy of enemies) {
+                    const screen = enemy.getScreenPosition();
+                    const dist = Math.sqrt(
+                        Math.pow(x - screen.x, 2) + 
+                        Math.pow(y - screen.y, 2)
+                    );
+                    
+                    if (dist < minDist) {
+                        minDist = dist;
+                        closestEnemy = enemy;
+                    }
+                }
+                
+                targetEnemy = closestEnemy;
+                
+                // 目标锁定指示
+                if (targetEnemy) {
+                    const targetScreen = targetEnemy.getScreenPosition();
+                    
+                    // 锁定线
+                    ctx2d.strokeStyle = 'rgba(255, 200, 0, 0.6)';
+                    ctx2d.lineWidth = 2;
+                    ctx2d.setLineDash([8, 4]);
+                    ctx2d.beginPath();
+                    ctx2d.moveTo(x, y);
+                    ctx2d.lineTo(targetScreen.x, targetScreen.y);
+                    ctx2d.stroke();
+                    ctx2d.setLineDash([]);
+                    
+                    // 目标框
+                    ctx2d.strokeStyle = '#ffcc00';
+                    ctx2d.lineWidth = 3;
+                    ctx2d.shadowColor = '#ffcc00';
+                    ctx2d.shadowBlur = 10;
+                    
+                    const boxSize = 50;
+                    const cornerLength = 15;
+                    
+                    // 四角
+                    ctx2d.beginPath();
+                    // 左上
+                    ctx2d.moveTo(targetScreen.x - boxSize, targetScreen.y - boxSize + cornerLength);
+                    ctx2d.lineTo(targetScreen.x - boxSize, targetScreen.y - boxSize);
+                    ctx2d.lineTo(targetScreen.x - boxSize + cornerLength, targetScreen.y - boxSize);
+                    // 右上
+                    ctx2d.moveTo(targetScreen.x + boxSize - cornerLength, targetScreen.y - boxSize);
+                    ctx2d.lineTo(targetScreen.x + boxSize, targetScreen.y - boxSize);
+                    ctx2d.lineTo(targetScreen.x + boxSize, targetScreen.y - boxSize + cornerLength);
+                    // 右下
+                    ctx2d.moveTo(targetScreen.x + boxSize, targetScreen.y + boxSize - cornerLength);
+                    ctx2d.lineTo(targetScreen.x + boxSize, targetScreen.y + boxSize);
+                    ctx2d.lineTo(targetScreen.x + boxSize - cornerLength, targetScreen.y + boxSize);
+                    // 左下
+                    ctx2d.moveTo(targetScreen.x - boxSize + cornerLength, targetScreen.y + boxSize);
+                    ctx2d.lineTo(targetScreen.x - boxSize, targetScreen.y + boxSize);
+                    ctx2d.lineTo(targetScreen.x - boxSize, targetScreen.y + boxSize - cornerLength);
+                    ctx2d.stroke();
+                    
+                    ctx2d.shadowBlur = 0;
+                    
+                    // 显示距离
+                    ctx2d.fillStyle = '#ffcc00';
+                    ctx2d.font = '14px Courier New';
+                    ctx2d.fillText(`${Math.round(minDist)}px`, targetScreen.x + boxSize + 10, targetScreen.y);
+                }
+            }
+            
+            // 显示手势状态文字
+            ctx2d.fillStyle = crosshairColor;
+            ctx2d.font = '12px Courier New';
+            ctx2d.textAlign = 'center';
+            let statusText = '移动手指';
+            if (gestureState === 'aiming') {
+                statusText = '瞄准中 - 弯曲拇指开火';
+            } else if (gestureState === 'fired') {
+                statusText = '开火!';
+            }
+            ctx2d.fillText(statusText, x, y + crossLength + 20);
+            ctx2d.textAlign = 'left';
+        }
+
+        function animate() {
+            requestAnimationFrame(animate);
+            
+            if (!gameRunning || gamePaused) {
+                renderer.render(scene, camera);
+                return;
+            }
+            
+            // 更新波次
+            updateWave();
+            
+            // 更新敌人 - 到达中心只是消失，不造成伤害
+            for (let i = enemies.length - 1; i >= 0; i--) {
+                const status = enemies[i].update();
+                if (status === 'reached') {
+                    enemies[i].remove();
+                    enemies.splice(i, 1);
+                    // 不再调用 takeDamage()
+                }
+            }
+            
+            // 生成敌人
+            spawnEnemy();
+            
+            // 连击超时重置
+            if (combo > 0 && Date.now() - lastComboTime > CONFIG.COMBO_TIMEOUT) {
+                combo = 0;
+                updateUI();
+            }
+            
+            drawCrosshair();
+            renderer.render(scene, camera);
+        }
+
+        // ===== 初始化 =====
+        window.addEventListener('load', async () => {
+            try {
+                document.getElementById('loading-text').textContent = '初始化场景...';
+                updateLoadingProgress(10);
+                
+                initThree();
+                updateLoadingProgress(30);
+                
+                document.getElementById('loading-text').textContent = '加载手势识别模型...';
+                
+                // 等待 MediaPipe 库加载
+                let attempts = 0;
+                while (typeof Hands === 'undefined' || typeof Camera === 'undefined') {
+                    if (attempts++ > 50) {
+                        throw new Error('MediaPipe 库加载超时');
+                    }
+                    await new Promise(r => setTimeout(r, 100));
+                    updateLoadingProgress(30 + attempts);
+                }
+                
+                updateLoadingProgress(60);
+                document.getElementById('loading-text').textContent = '初始化摄像头...';
+                
+                await initMediaPipe();
+                updateLoadingProgress(90);
+                
+                document.getElementById('loading-text').textContent = '准备就绪!';
+                
+                waveStartTime = Date.now();
+                lastSpawnTime = Date.now();
+                gameRunning = true;
+                
+                document.getElementById('status-text').textContent = '🔫 伸出食指瞄准，拇指弯曲开火!';
+                
+                animate();
+                
+                updateLoadingProgress(100);
+                setTimeout(hideLoadingScreen, 500);
+                
+                log('游戏启动完成!');
+                
+                // 点击屏幕激活音频
+                document.addEventListener('click', initAudio, { once: true });
+                document.addEventListener('touchstart', initAudio, { once: true });
+                
+            } catch (error) {
+                console.error('初始化错误:', error);
+                document.getElementById('loading-text').textContent = 
+                    '❌ 初始化失败: ' + error.message;
+                document.getElementById('loading-text').style.color = '#ff4444';
+            }
+        });
+
+        // 键盘调试
+        document.addEventListener('keydown', (e) => {
+            if (e.key === 'p') {
+                gamePaused = !gamePaused;
+                document.getElementById('status-text').textContent = 
+                    gamePaused ? '⏸️ 游戏暂停' : '🔫 伸出食指瞄准，拇指弯曲开火!';
+            }
+            if (e.key === 'r') {
+                restartGame();
+            }
+            // 调试模式 - 测试射击
+            if (e.key === ' ') {
+                fireGun(smoothedGunPosition.x, smoothedGunPosition.y);
+            }
+        });
+
+        // 页面可见性处理
+        document.addEventListener('visibilitychange', () => {
+            if (document.hidden) {
+                gamePaused = true;
+            } else {
+                gamePaused = false;
+            }
+        });
+    </script>
+</body>
+</html>

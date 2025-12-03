@@ -1,0 +1,869 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>手势识别控制爱心粒子</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            width: 100%;
+            height: 100vh;
+            overflow: hidden;
+            background: #000;
+            font-family: 'Segoe UI', Arial, sans-serif;
+        }
+        
+        #canvas {
+            display: block;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+        }
+        
+        .camera-container {
+            position: fixed;
+            bottom: 30px;
+            right: 30px;
+            width: 200px;
+            background: rgba(10, 10, 20, 0.95);
+            border: 2px solid rgba(255, 100, 100, 0.5);
+            border-radius: 16px;
+            overflow: hidden;
+            z-index: 100;
+            display: flex;
+            flex-direction: column;
+            box-shadow: 
+                0 0 30px rgba(255, 100, 100, 0.2),
+                inset 0 0 20px rgba(255, 100, 100, 0.05);
+            backdrop-filter: blur(10px);
+            transition: transform 0.3s ease, opacity 0.3s ease;
+        }
+        
+        .camera-container:hover {
+            transform: scale(1.02);
+            border-color: rgba(255, 100, 100, 0.8);
+        }
+        
+        .camera-container.minimized {
+            width: 60px;
+            height: 60px;
+            border-radius: 50%;
+            cursor: pointer;
+        }
+        
+        .camera-container.minimized .camera-content {
+            display: none;
+        }
+        
+        .camera-container.minimized .minimize-icon {
+            display: flex;
+        }
+        
+        .minimize-icon {
+            display: none;
+            width: 100%;
+            height: 100%;
+            align-items: center;
+            justify-content: center;
+            font-size: 24px;
+        }
+        
+        .camera-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 8px 12px;
+            background: rgba(255, 100, 100, 0.1);
+            border-bottom: 1px solid rgba(255, 100, 100, 0.2);
+        }
+        
+        .camera-title {
+            color: #ff8888;
+            font-size: 12px;
+            font-weight: 600;
+        }
+        
+        .minimize-btn {
+            background: none;
+            border: none;
+            color: #ff8888;
+            cursor: pointer;
+            font-size: 16px;
+            padding: 2px 6px;
+            border-radius: 4px;
+            transition: background 0.2s;
+        }
+        
+        .minimize-btn:hover {
+            background: rgba(255, 100, 100, 0.2);
+        }
+        
+        #video {
+            width: 100%;
+            height: 150px;
+            object-fit: cover;
+            transform: scaleX(-1);
+            background: linear-gradient(135deg, #111 0%, #1a1a2e 100%);
+        }
+        
+        .gesture-info {
+            background: linear-gradient(180deg, rgba(255, 100, 100, 0.1) 0%, rgba(255, 100, 100, 0.05) 100%);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            color: #fff;
+            font-size: 11px;
+            padding: 12px;
+            text-align: center;
+            gap: 6px;
+        }
+        
+        .gesture-status {
+            color: #ffaa88;
+            font-size: 13px;
+            font-weight: 600;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+        
+        .status-dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background: #666;
+            transition: background 0.3s, box-shadow 0.3s;
+        }
+        
+        .status-dot.active {
+            background: #00ff88;
+            box-shadow: 0 0 10px #00ff88;
+        }
+        
+        .status-dot.waiting {
+            background: #ffaa00;
+            box-shadow: 0 0 10px #ffaa00;
+            animation: pulse 1.5s infinite;
+        }
+        
+        .status-dot.error {
+            background: #ff4444;
+            box-shadow: 0 0 10px #ff4444;
+        }
+        
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
+        }
+        
+        .gesture-state {
+            color: #ffd700;
+            font-size: 20px;
+            font-weight: bold;
+            min-height: 28px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        
+        .gesture-state-text {
+            font-size: 14px;
+        }
+        
+        .progress-container {
+            width: 100%;
+            height: 6px;
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 3px;
+            overflow: hidden;
+            margin: 4px 0;
+        }
+        
+        .progress-bar {
+            height: 100%;
+            background: linear-gradient(90deg, #ff6464, #ff8888, #ffaaaa);
+            border-radius: 3px;
+            transition: width 0.1s ease-out;
+            box-shadow: 0 0 10px rgba(255, 100, 100, 0.5);
+        }
+        
+        .gesture-details {
+            display: flex;
+            justify-content: space-between;
+            width: 100%;
+            padding: 0 4px;
+        }
+        
+        .gesture-value {
+            color: #aaa;
+            font-size: 11px;
+        }
+        
+        .gesture-scale {
+            color: #88ff88;
+            font-size: 11px;
+            font-weight: 600;
+        }
+        
+        .info {
+            position: fixed;
+            top: 20px;
+            left: 20px;
+            color: #fff;
+            font-size: 14px;
+            z-index: 100;
+            background: rgba(10, 10, 20, 0.9);
+            padding: 16px 20px;
+            border-radius: 12px;
+            border-left: 4px solid #ff6464;
+            backdrop-filter: blur(10px);
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
+            max-width: 280px;
+        }
+        
+        .info h3 {
+            color: #ff8888;
+            margin-bottom: 12px;
+            font-size: 15px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        
+        .info p {
+            margin: 8px 0;
+            color: #bbb;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            font-size: 13px;
+        }
+        
+        .info p span.icon {
+            font-size: 18px;
+            width: 24px;
+            text-align: center;
+        }
+        
+        .loading-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.9);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            z-index: 1000;
+            transition: opacity 0.5s ease;
+        }
+        
+        .loading-overlay.hidden {
+            opacity: 0;
+            pointer-events: none;
+        }
+        
+        .loading-heart {
+            font-size: 60px;
+            animation: heartbeat 1s infinite;
+        }
+        
+        @keyframes heartbeat {
+            0%, 100% { transform: scale(1); }
+            50% { transform: scale(1.2); }
+        }
+        
+        .loading-text {
+            color: #ff8888;
+            margin-top: 20px;
+            font-size: 16px;
+        }
+        
+        .loading-progress {
+            width: 200px;
+            height: 4px;
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 2px;
+            margin-top: 15px;
+            overflow: hidden;
+        }
+        
+        .loading-progress-bar {
+            height: 100%;
+            background: linear-gradient(90deg, #ff6464, #ff8888);
+            width: 0%;
+            transition: width 0.3s ease;
+        }
+        
+        /* 性能模式切换按钮 */
+        .performance-toggle {
+            position: fixed;
+            bottom: 30px;
+            left: 30px;
+            background: rgba(10, 10, 20, 0.9);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            border-radius: 8px;
+            padding: 10px 15px;
+            color: #aaa;
+            font-size: 12px;
+            cursor: pointer;
+            z-index: 100;
+            transition: all 0.3s;
+        }
+        
+        .performance-toggle:hover {
+            background: rgba(255, 100, 100, 0.2);
+            border-color: rgba(255, 100, 100, 0.5);
+            color: #fff;
+        }
+        
+        .fps-counter {
+            position: fixed;
+            top: 20px;
+            right: 30px;
+            background: rgba(0, 0, 0, 0.7);
+            color: #00ff88;
+            padding: 8px 12px;
+            border-radius: 6px;
+            font-size: 12px;
+            font-family: monospace;
+            z-index: 100;
+        }
+    </style>
+</head>
+<body>
+    <!-- 加载界面 -->
+    <div class="loading-overlay" id="loadingOverlay">
+        <div class="loading-heart">💖</div>
+        <div class="loading-text" id="loadingText">初始化中...</div>
+        <div class="loading-progress">
+            <div class="loading-progress-bar" id="loadingProgress"></div>
+        </div>
+    </div>
+
+    <div class="info">
+        <h3>💖 手势控制</h3>
+        <p><span class="icon">✋</span> 张开手掌 - 爱心放大</p>
+        <p><span class="icon">👊</span> 握紧拳头 - 爱心缩小</p>
+        <p><span class="icon">👋</span> 实时响应手势变化</p>
+    </div>
+    
+    <div class="fps-counter" id="fpsCounter">FPS: --</div>
+    
+    <button class="performance-toggle" id="performanceToggle">
+        ⚡ 高性能模式
+    </button>
+    
+    <div class="camera-container" id="cameraContainer">
+        <div class="minimize-icon">📷</div>
+        <div class="camera-content">
+            <div class="camera-header">
+                <span class="camera-title">手势检测</span>
+                <button class="minimize-btn" id="minimizeBtn">−</button>
+            </div>
+            <video id="video" playsinline autoplay muted></video>
+            <div class="gesture-info">
+                <div class="gesture-status">
+                    <span class="status-dot" id="statusDot"></span>
+                    <span id="gestureStatus">初始化中...</span>
+                </div>
+                <div class="gesture-state">
+                    <span id="gestureEmoji">🤚</span>
+                    <span class="gesture-state-text" id="gestureState">等待检测</span>
+                </div>
+                <div class="progress-container">
+                    <div class="progress-bar" id="progressBar" style="width: 50%"></div>
+                </div>
+                <div class="gesture-details">
+                    <span class="gesture-value" id="gestureValue">打开度: --%</span>
+                    <span class="gesture-scale" id="gestureScale">缩放: 1.00x</span>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="./js/camera_utils.js"></script>
+    <script src="./js/drawing_utils.js"></script>
+    <script src="./js/hands.js"></script>
+    <script src="./js/three.min.js"></script>
+    
+    <script>
+        // ==================== 配置 ====================
+        const CONFIG = {
+            particles: {
+                count: 2000,
+                size: 0.25,
+                heartScale: 0.3,
+                spread: 2,
+                depthRange: 5
+            },
+            gesture: {
+                minScale: 0.4,
+                maxScale: 3.5,
+                smoothing: 0.15,
+                openThreshold: 0.65,
+                closeThreshold: 0.35
+            },
+            animation: {
+                rotationSpeed: { x: 0.0005, y: 0.0008, z: 0.0003 },
+                breathingEnabled: true,
+                breathingIntensity: 0.02,
+                breathingSpeed: 0.002
+            },
+            performance: {
+                highMode: true,
+                targetFPS: 60
+            }
+        };
+
+        // ==================== 状态管理 ====================
+        const State = {
+            scale: 1,
+            targetScale: 1,
+            openness: 0.5,
+            lastOpenness: 0.5,
+            breathingPhase: 0,
+            isHandDetected: false,
+            fps: 0,
+            frameCount: 0,
+            lastFPSUpdate: performance.now()
+        };
+
+        // ==================== UI 元素缓存 ====================
+        const UI = {
+            loadingOverlay: document.getElementById('loadingOverlay'),
+            loadingText: document.getElementById('loadingText'),
+            loadingProgress: document.getElementById('loadingProgress'),
+            gestureStatus: document.getElementById('gestureStatus'),
+            gestureState: document.getElementById('gestureState'),
+            gestureEmoji: document.getElementById('gestureEmoji'),
+            gestureValue: document.getElementById('gestureValue'),
+            gestureScale: document.getElementById('gestureScale'),
+            progressBar: document.getElementById('progressBar'),
+            statusDot: document.getElementById('statusDot'),
+            fpsCounter: document.getElementById('fpsCounter'),
+            video: document.getElementById('video'),
+            cameraContainer: document.getElementById('cameraContainer'),
+            minimizeBtn: document.getElementById('minimizeBtn'),
+            performanceToggle: document.getElementById('performanceToggle')
+        };
+
+        // ==================== 加载进度管理 ====================
+        function updateLoadingProgress(progress, text) {
+            UI.loadingProgress.style.width = `${progress}%`;
+            if (text) UI.loadingText.textContent = text;
+        }
+
+        function hideLoading() {
+            UI.loadingOverlay.classList.add('hidden');
+        }
+
+        // ==================== Three.js 场景 ====================
+        class HeartParticleSystem {
+            constructor() {
+                this.scene = new THREE.Scene();
+                this.camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+                this.renderer = new THREE.WebGLRenderer({ 
+                    antialias: CONFIG.performance.highMode,
+                    powerPreference: 'high-performance'
+                });
+                
+                this.setupRenderer();
+                this.createParticles();
+                this.setupLights();
+                
+                this.camera.position.z = 50;
+            }
+
+            setupRenderer() {
+                this.renderer.setSize(window.innerWidth, window.innerHeight);
+                this.renderer.setClearColor(0x000000);
+                this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+                document.body.insertBefore(this.renderer.domElement, document.body.firstChild);
+            }
+
+            createHeartVertices() {
+                const vertices = [];
+                const segments = 120;
+                
+                for (let i = 0; i < segments; i++) {
+                    const t = (i / segments) * Math.PI * 2;
+                    const x = 16 * Math.pow(Math.sin(t), 3);
+                    const y = 13 * Math.cos(t) - 5 * Math.cos(2 * t) - 2 * Math.cos(3 * t) - Math.cos(4 * t);
+                    vertices.push(new THREE.Vector3(
+                        x * CONFIG.particles.heartScale, 
+                        y * CONFIG.particles.heartScale, 
+                        0
+                    ));
+                }
+                return vertices;
+            }
+
+            createParticles() {
+                const geometry = new THREE.BufferGeometry();
+                const positions = new Float32Array(CONFIG.particles.count * 3);
+                const colors = new Float32Array(CONFIG.particles.count * 3);
+                const sizes = new Float32Array(CONFIG.particles.count);
+                const originalPositions = new Float32Array(CONFIG.particles.count * 3);
+                
+                const heartVertices = this.createHeartVertices();
+                
+                for (let i = 0; i < CONFIG.particles.count; i++) {
+                    const heartPoint = heartVertices[Math.floor(Math.random() * heartVertices.length)];
+                    const randomRadius = Math.random() * CONFIG.particles.spread;
+                    const randomAngle = Math.random() * Math.PI * 2;
+                    
+                    const x = heartPoint.x + Math.cos(randomAngle) * randomRadius;
+                    const y = heartPoint.y + Math.sin(randomAngle) * randomRadius;
+                    const z = (Math.random() - 0.5) * CONFIG.particles.depthRange;
+                    
+                    const idx = i * 3;
+                    positions[idx] = x;
+                    positions[idx + 1] = y;
+                    positions[idx + 2] = z;
+                    
+                    originalPositions[idx] = x;
+                    originalPositions[idx + 1] = y;
+                    originalPositions[idx + 2] = z;
+                    
+                    // 渐变色：从深红到粉红
+                    const colorVariation = Math.random();
+                    colors[idx] = 0.9 + Math.random() * 0.1;      // R
+                    colors[idx + 1] = 0.2 * colorVariation;        // G
+                    colors[idx + 2] = 0.3 * colorVariation;        // B
+                    
+                    sizes[i] = CONFIG.particles.size * (0.5 + Math.random() * 0.5);
+                }
+                
+                geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+                geometry.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+                geometry.setAttribute('size', new THREE.BufferAttribute(sizes, 1));
+                
+                this.originalPositions = originalPositions;
+                
+                // 自定义着色器材质（更好的粒子效果）
+                const material = new THREE.PointsMaterial({
+                    size: CONFIG.particles.size,
+                    vertexColors: true,
+                    transparent: true,
+                    opacity: 0.9,
+                    sizeAttenuation: true,
+                    blending: THREE.AdditiveBlending,
+                    depthWrite: false
+                });
+                
+                this.particles = new THREE.Points(geometry, material);
+                this.scene.add(this.particles);
+            }
+
+            setupLights() {
+                const ambientLight = new THREE.AmbientLight(0x404040, 0.5);
+                this.scene.add(ambientLight);
+            }
+
+            update(scale) {
+                const { rotationSpeed, breathingEnabled, breathingIntensity, breathingSpeed } = CONFIG.animation;
+                
+                this.particles.rotation.x += rotationSpeed.x;
+                this.particles.rotation.y += rotationSpeed.y;
+                this.particles.rotation.z += rotationSpeed.z;
+                
+                // 呼吸效果
+                let breathingScale = 1;
+                if (breathingEnabled && !State.isHandDetected) {
+                    State.breathingPhase += breathingSpeed;
+                    breathingScale = 1 + Math.sin(State.breathingPhase) * breathingIntensity;
+                }
+                
+                const finalScale = scale * breathingScale;
+                this.particles.scale.set(finalScale, finalScale, finalScale);
+            }
+
+            render() {
+                this.renderer.render(this.scene, this.camera);
+            }
+
+            resize() {
+                this.camera.aspect = window.innerWidth / window.innerHeight;
+                this.camera.updateProjectionMatrix();
+                this.renderer.setSize(window.innerWidth, window.innerHeight);
+            }
+
+            setPerformanceMode(highMode) {
+                CONFIG.performance.highMode = highMode;
+                this.renderer.setPixelRatio(highMode ? Math.min(window.devicePixelRatio, 2) : 1);
+            }
+        }
+
+        // ==================== 手势检测系统 ====================
+        class GestureDetector {
+            constructor(videoElement, onResult) {
+                this.videoElement = videoElement;
+                this.onResult = onResult;
+                this.hands = null;
+                this.isProcessing = false;
+                this.smoothedOpenness = 0.5;
+            }
+
+            async initialize() {
+                updateLoadingProgress(30, '加载手势识别模型...');
+                
+                this.hands = new Hands({
+                    locateFile: (file) => `./js/hands/${file}`
+                });
+
+                this.hands.setOptions({
+                    maxNumHands: 1,
+                    modelComplexity: CONFIG.performance.highMode ? 1 : 0,
+                    minDetectionConfidence: 0.6,
+                    minTrackingConfidence: 0.6
+                });
+
+                this.hands.onResults(this.handleResults.bind(this));
+                
+                updateLoadingProgress(50, '初始化摄像头...');
+                await this.setupCamera();
+            }
+
+            async setupCamera() {
+                try {
+                    const stream = await navigator.mediaDevices.getUserMedia({
+                        video: { 
+                            width: { ideal: 640 },
+                            height: { ideal: 480 },
+                            facingMode: 'user'
+                        }
+                    });
+                    
+                    this.videoElement.srcObject = stream;
+                    
+                    await new Promise((resolve) => {
+                        this.videoElement.onloadedmetadata = () => {
+                            this.videoElement.play();
+                            resolve();
+                        };
+                    });
+                    
+                    updateLoadingProgress(80, '准备就绪...');
+                    this.updateStatus('ready', '已就绪');
+                    
+                    setTimeout(() => {
+                        updateLoadingProgress(100, '启动中...');
+                        setTimeout(hideLoading, 300);
+                    }, 500);
+                    
+                    this.startProcessing();
+                    
+                } catch (err) {
+                    console.error('摄像头初始化失败:', err);
+                    this.updateStatus('error', '摄像头失败');
+                    UI.loadingText.textContent = '摄像头访问失败，请检查权限';
+                }
+            }
+
+            startProcessing() {
+                const process = async () => {
+                    if (!this.isProcessing) {
+                        this.isProcessing = true;
+                        try {
+                            await this.hands.send({ image: this.videoElement });
+                        } catch (e) {
+                            console.warn('处理帧时出错:', e);
+                        }
+                        this.isProcessing = false;
+                    }
+                    requestAnimationFrame(process);
+                };
+                process();
+            }
+
+            calculateHandOpenness(landmarks) {
+                if (!landmarks || landmarks.length < 21) return null;
+                
+                // 关键点
+                const wrist = landmarks[0];
+                const thumbTip = landmarks[4];
+                const indexTip = landmarks[8];
+                const middleTip = landmarks[12];
+                const ringTip = landmarks[16];
+                const pinkyTip = landmarks[20];
+                
+                // MCP 关节（指根）
+                const indexMCP = landmarks[5];
+                const middleMCP = landmarks[9];
+                const ringMCP = landmarks[13];
+                const pinkyMCP = landmarks[17];
+                
+                // 计算手掌大小作为归一化基准
+                const palmSize = Math.hypot(
+                    middleMCP.x - wrist.x,
+                    middleMCP.y - wrist.y
+                );
+                
+                // 计算每个手指的伸展程度
+                const fingerExtensions = [
+                    this.getFingerExtension(thumbTip, landmarks[2], wrist, palmSize),
+                    this.getFingerExtension(indexTip, indexMCP, wrist, palmSize),
+                    this.getFingerExtension(middleTip, middleMCP, wrist, palmSize),
+                    this.getFingerExtension(ringTip, ringMCP, wrist, palmSize),
+                    this.getFingerExtension(pinkyTip, pinkyMCP, wrist, palmSize)
+                ];
+                
+                // 计算手指间距（张开时更大）
+                const fingerSpread = this.calculateFingerSpread([indexTip, middleTip, ringTip, pinkyTip], palmSize);
+                
+                // 综合评分
+                const avgExtension = fingerExtensions.reduce((a, b) => a + b, 0) / fingerExtensions.length;
+                const openness = avgExtension * 0.7 + fingerSpread * 0.3;
+                
+                return Math.min(1, Math.max(0, openness));
+            }
+
+            getFingerExtension(tip, base, wrist, palmSize) {
+                const tipDist = Math.hypot(tip.x - wrist.x, tip.y - wrist.y);
+                const baseDist = Math.hypot(base.x - wrist.x, base.y - wrist.y);
+                const extension = (tipDist - baseDist) / palmSize;
+                return Math.min(1, Math.max(0, (extension + 0.2) / 0.8));
+            }
+
+            calculateFingerSpread(tips, palmSize) {
+                let totalDist = 0;
+                for (let i = 0; i < tips.length - 1; i++) {
+                    totalDist += Math.hypot(tips[i].x - tips[i + 1].x, tips[i].y - tips[i + 1].y);
+                }
+                return Math.min(1, totalDist / palmSize / 1.5);
+            }
+
+            handleResults(results) {
+                if (results.multiHandLandmarks && results.multiHandLandmarks.length > 0) {
+                    const landmarks = results.multiHandLandmarks[0];
+                    const rawOpenness = this.calculateHandOpenness(landmarks);
+                    
+                    if (rawOpenness !== null) {
+                        // 平滑处理
+                        this.smoothedOpenness += (rawOpenness - this.smoothedOpenness) * 0.3;
+                        State.isHandDetected = true;
+                        this.onResult(this.smoothedOpenness);
+                        this.updateUI(this.smoothedOpenness);
+                    }
+                } else {
+                    State.isHandDetected = false;
+                    this.updateStatus('waiting', '等待手势...');
+                    UI.gestureState.textContent = '等待检测';
+                    UI.gestureEmoji.textContent = '🤚';
+                }
+            }
+
+            updateUI(openness) {
+                const { openThreshold, closeThreshold, minScale, maxScale } = CONFIG.gesture;
+                
+                State.targetScale = minScale + openness * (maxScale - minScale);
+                
+                this.updateStatus('active', '检测中');
+                
+                if (openness > openThreshold) {
+                    UI.gestureState.textContent = '张开';
+                    UI.gestureEmoji.textContent = '✋';
+                } else if (openness < closeThreshold) {
+                    UI.gestureState.textContent = '握拳';
+                    UI.gestureEmoji.textContent = '👊';
+                } else {
+                    UI.gestureState.textContent = '过渡';
+                    UI.gestureEmoji.textContent = '🤏';
+                }
+                
+                UI.gestureValue.textContent = `打开度: ${(openness * 100).toFixed(0)}%`;
+                UI.gestureScale.textContent = `缩放: ${State.targetScale.toFixed(2)}x`;
+                UI.progressBar.style.width = `${openness * 100}%`;
+            }
+
+            updateStatus(status, text) {
+                UI.gestureStatus.textContent = text;
+                UI.statusDot.className = 'status-dot ' + status;
+            }
+        }
+
+        // ==================== FPS 计数器 ====================
+        function updateFPS() {
+            State.frameCount++;
+            const now = performance.now();
+            
+            if (now - State.lastFPSUpdate >= 1000) {
+                State.fps = State.frameCount;
+                State.frameCount = 0;
+                State.lastFPSUpdate = now;
+                UI.fpsCounter.textContent = `FPS: ${State.fps}`;
+            }
+        }
+
+        // ==================== 主程序 ====================
+        async function main() {
+            updateLoadingProgress(10, '初始化场景...');
+            
+            // 创建粒子系统
+            const particleSystem = new HeartParticleSystem();
+            
+            // 创建手势检测器
+            const gestureDetector = new GestureDetector(UI.video, (openness) => {
+                State.openness = openness;
+            });
+            
+            // 初始化手势检测
+            await gestureDetector.initialize();
+            
+            // 动画循环
+            function animate() {
+                requestAnimationFrame(animate);
+                
+                // 平滑缩放过渡
+                const diff = State.targetScale - State.scale;
+                State.scale += diff * CONFIG.gesture.smoothing;
+                
+                // 更新粒子系统
+                particleSystem.update(State.scale);
+                particleSystem.render();
+                
+                // 更新 FPS
+                updateFPS();
+            }
+            
+            animate();
+            
+            // 事件监听
+            window.addEventListener('resize', () => particleSystem.resize());
+            
+            // 最小化按钮
+            UI.minimizeBtn.addEventListener('click', () => {
+                UI.cameraContainer.classList.toggle('minimized');
+            });
+            
+            UI.cameraContainer.addEventListener('click', (e) => {
+                if (UI.cameraContainer.classList.contains('minimized')) {
+                    UI.cameraContainer.classList.remove('minimized');
+                }
+            });
+            
+            // 性能模式切换
+            UI.performanceToggle.addEventListener('click', () => {
+                CONFIG.performance.highMode = !CONFIG.performance.highMode;
+                particleSystem.setPerformanceMode(CONFIG.performance.highMode);
+                UI.performanceToggle.textContent = CONFIG.performance.highMode ? '⚡ 高性能模式' : '🔋 省电模式';
+            });
+        }
+
+        // 启动
+        main().catch(console.error);
+    </script>
+</body>
+</html>

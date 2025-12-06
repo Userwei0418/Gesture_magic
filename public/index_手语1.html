@@ -1,0 +1,929 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>手语识别助手 - 帮助聋哑人表达</title>
+    <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands@0.4.1675469240/hands.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils@0.3.1675466862/camera_utils.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils@0.3.1675466124/drawing_utils.min.js"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@400;700;900&display=swap');
+        
+        body {
+            font-family: 'Noto Sans SC', sans-serif;
+            overflow: hidden;
+        }
+        
+        #container {
+            position: relative;
+            width: 100vw;
+            height: 100vh;
+        }
+        
+        #video-container {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+        }
+        
+        #input-video {
+            display: none;
+        }
+        
+        #output-canvas {
+            border-radius: 20px;
+            box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5);
+        }
+        
+        #three-canvas {
+            position: absolute;
+            top: 0;
+            left: 0;
+            pointer-events: none;
+            border-radius: 20px;
+        }
+        
+        #gesture-overlay {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
+            overflow: hidden;
+            border-radius: 20px;
+        }
+        
+        .gesture-text {
+            position: absolute;
+            font-size: 2.5rem;
+            font-weight: 900;
+            text-align: center;
+            pointer-events: none;
+            animation: textSlideIn 0.5s ease-out forwards;
+            text-shadow: 0 0 10px currentColor, 0 0 20px currentColor;
+            white-space: nowrap;
+        }
+        
+        @keyframes textSlideIn {
+            0% { opacity: 0; transform: translateY(20px); }
+            100% { opacity: 1; transform: translateY(0); }
+        }
+        
+        @keyframes textFloat {
+            0%, 100% { transform: translateY(0); }
+            50% { transform: translateY(-8px); }
+        }
+        
+        .emoji-particle {
+            position: absolute;
+            font-size: 1.5rem;
+            pointer-events: none;
+            animation: floatAround 2.5s ease-out forwards;
+        }
+        
+        @keyframes floatAround {
+            0% { opacity: 1; transform: translate(0, 0) scale(1) rotate(0deg); }
+            100% { opacity: 0; transform: translate(var(--tx), var(--ty)) scale(0.3) rotate(360deg); }
+        }
+        
+        .edge-particle {
+            position: absolute;
+            font-size: 2rem;
+            pointer-events: none;
+            animation: edgeFloat 3s ease-in-out forwards;
+        }
+        
+        @keyframes edgeFloat {
+            0% { opacity: 0; transform: scale(0.5); }
+            20% { opacity: 1; transform: scale(1); }
+            80% { opacity: 1; transform: scale(1); }
+            100% { opacity: 0; transform: scale(0.5) translateY(-30px); }
+        }
+        
+        .corner-decoration {
+            position: absolute;
+            pointer-events: none;
+            animation: cornerPulse 2s ease-in-out infinite;
+        }
+        
+        @keyframes cornerPulse {
+            0%, 100% { opacity: 0.8; transform: scale(1); }
+            50% { opacity: 1; transform: scale(1.1); }
+        }
+        
+        .side-text {
+            position: absolute;
+            font-size: 3rem;
+            font-weight: 900;
+            pointer-events: none;
+            writing-mode: vertical-rl;
+            text-orientation: upright;
+            animation: sideTextAppear 0.6s ease-out forwards;
+            text-shadow: 0 0 15px currentColor;
+        }
+        
+        @keyframes sideTextAppear {
+            0% { opacity: 0; transform: translateX(-20px); }
+            100% { opacity: 1; transform: translateX(0); }
+        }
+        
+        .bottom-banner {
+            position: absolute;
+            bottom: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            padding: 10px 30px;
+            border-radius: 30px;
+            font-size: 1.8rem;
+            font-weight: 900;
+            pointer-events: none;
+            animation: bannerSlideUp 0.5s ease-out forwards;
+            backdrop-filter: blur(10px);
+        }
+        
+        @keyframes bannerSlideUp {
+            0% { opacity: 0; transform: translateX(-50%) translateY(50px); }
+            100% { opacity: 1; transform: translateX(-50%) translateY(0); }
+        }
+        
+        #gesture-history {
+            backdrop-filter: blur(10px);
+        }
+        
+        .history-item {
+            animation: slideIn 0.3s ease-out;
+        }
+        
+        @keyframes slideIn {
+            from { transform: translateX(-100%); opacity: 0; }
+            to { transform: translateX(0); opacity: 1; }
+        }
+        
+        .guide-scroll {
+            max-height: 400px;
+            overflow-y: auto;
+        }
+        
+        .guide-scroll::-webkit-scrollbar {
+            width: 4px;
+        }
+        
+        .guide-scroll::-webkit-scrollbar-track {
+            background: rgba(255,255,255,0.1);
+            border-radius: 2px;
+        }
+        
+        .guide-scroll::-webkit-scrollbar-thumb {
+            background: rgba(255,255,255,0.3);
+            border-radius: 2px;
+        }
+    </style>
+</head>
+<body class="bg-gradient-to-br from-purple-900 via-blue-900 to-indigo-900 min-h-screen">
+    <div id="container">
+        <!-- Header -->
+        <div class="absolute top-0 left-0 right-0 z-20 p-4">
+            <div class="max-w-4xl mx-auto flex items-center justify-between">
+                <div class="flex items-center gap-3">
+                    <div class="w-12 h-12 bg-gradient-to-r from-pink-500 to-purple-500 rounded-xl flex items-center justify-center text-2xl">
+                        🤟
+                    </div>
+                    <div>
+                        <h1 class="text-white text-xl font-bold">手语识别助手</h1>
+                        <p class="text-purple-300 text-sm">帮助聋哑人无障碍表达</p>
+                    </div>
+                </div>
+                <div id="status" class="px-4 py-2 bg-yellow-500/20 text-yellow-300 rounded-full text-sm flex items-center gap-2">
+                    <span class="w-2 h-2 bg-yellow-400 rounded-full animate-pulse"></span>
+                    正在初始化...
+                </div>
+            </div>
+        </div>
+
+        <!-- Main Video Container -->
+        <div id="video-container">
+            <video id="input-video" playsinline></video>
+            <canvas id="output-canvas" width="1280" height="720"></canvas>
+            <canvas id="three-canvas" width="1280" height="720"></canvas>
+            <div id="gesture-overlay"></div>
+        </div>
+
+        <!-- Gesture Guide Panel -->
+        <div class="absolute bottom-4 left-4 z-20">
+            <div class="bg-white/10 backdrop-blur-lg rounded-2xl p-4 text-white max-w-xs">
+                <h3 class="font-bold mb-3 flex items-center gap-2">
+                    <span class="text-xl">📖</span> 支持的手势 (10种)
+                </h3>
+                <div class="guide-scroll space-y-2 text-sm">
+                    <div class="flex items-center gap-3 p-2 bg-white/5 rounded-lg">
+                        <span class="text-2xl">👋</span>
+                        <div>
+                            <p class="font-semibold">张开手掌</p>
+                            <p class="text-purple-300 text-xs">表示"你好"</p>
+                        </div>
+                    </div>
+                    <div class="flex items-center gap-3 p-2 bg-white/5 rounded-lg">
+                        <span class="text-2xl">👍</span>
+                        <div>
+                            <p class="font-semibold">竖起大拇指</p>
+                            <p class="text-purple-300 text-xs">表示"很棒/赞"</p>
+                        </div>
+                    </div>
+                    <div class="flex items-center gap-3 p-2 bg-white/5 rounded-lg">
+                        <span class="text-2xl">👎</span>
+                        <div>
+                            <p class="font-semibold">大拇指朝下</p>
+                            <p class="text-purple-300 text-xs">表示"不好"</p>
+                        </div>
+                    </div>
+                    <div class="flex items-center gap-3 p-2 bg-white/5 rounded-lg">
+                        <span class="text-2xl">✌️</span>
+                        <div>
+                            <p class="font-semibold">比耶手势</p>
+                            <p class="text-purple-300 text-xs">表示"胜利/耶"</p>
+                        </div>
+                    </div>
+                    <div class="flex items-center gap-3 p-2 bg-white/5 rounded-lg">
+                        <span class="text-2xl">🤟</span>
+                        <div>
+                            <p class="font-semibold">我爱你手势</p>
+                            <p class="text-purple-300 text-xs">拇指+食指+小指</p>
+                        </div>
+                    </div>
+                    <div class="flex items-center gap-3 p-2 bg-white/5 rounded-lg">
+                        <span class="text-2xl">✊</span>
+                        <div>
+                            <p class="font-semibold">握拳</p>
+                            <p class="text-purple-300 text-xs">表示"加油"</p>
+                        </div>
+                    </div>
+                    <div class="flex items-center gap-3 p-2 bg-white/5 rounded-lg">
+                        <span class="text-2xl">👌</span>
+                        <div>
+                            <p class="font-semibold">OK手势</p>
+                            <p class="text-purple-300 text-xs">表示"好的/没问题"</p>
+                        </div>
+                    </div>
+                    <div class="flex items-center gap-3 p-2 bg-white/5 rounded-lg">
+                        <span class="text-2xl">🤙</span>
+                        <div>
+                            <p class="font-semibold">打电话手势</p>
+                            <p class="text-purple-300 text-xs">拇指+小指伸出</p>
+                        </div>
+                    </div>
+                    <div class="flex items-center gap-3 p-2 bg-white/5 rounded-lg">
+                        <span class="text-2xl">☝️</span>
+                        <div>
+                            <p class="font-semibold">指向上方</p>
+                            <p class="text-purple-300 text-xs">表示"请注意"</p>
+                        </div>
+                    </div>
+                    <div class="flex items-center gap-3 p-2 bg-white/5 rounded-lg">
+                        <span class="text-2xl">🤘</span>
+                        <div>
+                            <p class="font-semibold">摇滚手势</p>
+                            <p class="text-purple-300 text-xs">食指+小指伸出</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Gesture History -->
+        <div id="gesture-history" class="absolute bottom-4 right-4 z-20 bg-white/10 rounded-2xl p-4 text-white w-64">
+            <h3 class="font-bold mb-3 flex items-center gap-2">
+                <span class="text-xl">📝</span> 识别历史
+            </h3>
+            <div id="history-list" class="space-y-2 max-h-48 overflow-y-auto">
+                <p class="text-purple-300 text-sm">等待手势识别...</p>
+            </div>
+        </div>
+
+        <!-- Current Gesture Display -->
+        <div id="current-gesture" class="absolute top-24 left-1/2 -translate-x-1/2 z-30 opacity-0 transition-all duration-300">
+            <div class="bg-gradient-to-r from-pink-500 via-purple-500 to-indigo-500 px-8 py-4 rounded-2xl shadow-2xl">
+                <p id="gesture-name" class="text-white text-3xl font-bold text-center"></p>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Global variables
+        let camera, hands;
+        let canvasCtx, outputCanvas;
+        let threeScene, threeCamera, threeRenderer;
+        let particles = [];
+        let currentGesture = null;
+        let lastGestureTime = 0;
+        let gestureHistory = [];
+        let canvasRect = null;
+        
+        // Gesture definitions - Extended with more gestures
+        const GESTURES = {
+            wave: {
+                name: '你好',
+                emoji: '👋',
+                color: '#FFD700',
+                bgColor: 'rgba(255, 215, 0, 0.2)',
+                particles: ['👋', '✨', '💫', '⭐', '🌟'],
+            },
+            thumbsUp: {
+                name: '很棒',
+                emoji: '👍',
+                color: '#00FF88',
+                bgColor: 'rgba(0, 255, 136, 0.2)',
+                particles: ['👍', '🌟', '💪', '✨', '🎯'],
+            },
+            thumbsDown: {
+                name: '不好',
+                emoji: '👎',
+                color: '#FF6B6B',
+                bgColor: 'rgba(255, 107, 107, 0.2)',
+                particles: ['👎', '😕', '💔', '❌'],
+            },
+            peace: {
+                name: '耶！',
+                emoji: '✌️',
+                color: '#00BFFF',
+                bgColor: 'rgba(0, 191, 255, 0.2)',
+                particles: ['✌️', '🎉', '🎊', '💙', '🌈'],
+            },
+            iLoveYou: {
+                name: '我爱你',
+                emoji: '🤟',
+                color: '#FF69B4',
+                bgColor: 'rgba(255, 105, 180, 0.2)',
+                particles: ['🤟', '❤️', '💕', '💖', '💗'],
+            },
+            fist: {
+                name: '加油',
+                emoji: '✊',
+                color: '#FF6B35',
+                bgColor: 'rgba(255, 107, 53, 0.2)',
+                particles: ['✊', '🔥', '💥', '⚡', '💯'],
+            },
+            ok: {
+                name: '好的',
+                emoji: '👌',
+                color: '#9B59B6',
+                bgColor: 'rgba(155, 89, 182, 0.2)',
+                particles: ['👌', '✅', '💜', '🆗', '👍'],
+            },
+            call: {
+                name: '打电话',
+                emoji: '🤙',
+                color: '#1ABC9C',
+                bgColor: 'rgba(26, 188, 156, 0.2)',
+                particles: ['🤙', '📞', '📱', '💚', '✨'],
+            },
+            pointUp: {
+                name: '请注意',
+                emoji: '☝️',
+                color: '#F39C12',
+                bgColor: 'rgba(243, 156, 18, 0.2)',
+                particles: ['☝️', '❗', '💡', '⬆️', '🔔'],
+            },
+            rock: {
+                name: '摇滚',
+                emoji: '🤘',
+                color: '#E74C3C',
+                bgColor: 'rgba(231, 76, 60, 0.2)',
+                particles: ['🤘', '🎸', '🎵', '🔥', '⚡'],
+            }
+        };
+
+        // Initialize the application
+        async function init() {
+            outputCanvas = document.getElementById('output-canvas');
+            canvasCtx = outputCanvas.getContext('2d');
+            
+            // Resize canvas based on window size
+            resizeCanvas();
+            window.addEventListener('resize', resizeCanvas);
+            
+            // Initialize Three.js
+            initThree();
+            
+            // Initialize MediaPipe Hands
+            initMediaPipe();
+        }
+
+        function resizeCanvas() {
+            const container = document.getElementById('video-container');
+            const aspectRatio = 16 / 9;
+            let width = Math.min(window.innerWidth * 0.65, 1100);
+            let height = width / aspectRatio;
+            
+            if (height > window.innerHeight * 0.7) {
+                height = window.innerHeight * 0.7;
+                width = height * aspectRatio;
+            }
+            
+            outputCanvas.width = width;
+            outputCanvas.height = height;
+            outputCanvas.style.width = width + 'px';
+            outputCanvas.style.height = height + 'px';
+            
+            const threeCanvas = document.getElementById('three-canvas');
+            threeCanvas.width = width;
+            threeCanvas.height = height;
+            threeCanvas.style.width = width + 'px';
+            threeCanvas.style.height = height + 'px';
+            
+            if (threeRenderer) {
+                threeRenderer.setSize(width, height);
+            }
+            
+            canvasRect = outputCanvas.getBoundingClientRect();
+        }
+
+        function initThree() {
+            const threeCanvas = document.getElementById('three-canvas');
+            
+            threeScene = new THREE.Scene();
+            threeCamera = new THREE.PerspectiveCamera(75, threeCanvas.width / threeCanvas.height, 0.1, 1000);
+            threeCamera.position.z = 5;
+            
+            threeRenderer = new THREE.WebGLRenderer({
+                canvas: threeCanvas,
+                alpha: true,
+                antialias: true
+            });
+            threeRenderer.setSize(threeCanvas.width, threeCanvas.height);
+            threeRenderer.setClearColor(0x000000, 0);
+            
+            // Add ambient light
+            const ambientLight = new THREE.AmbientLight(0xffffff, 0.5);
+            threeScene.add(ambientLight);
+            
+            // Add point light
+            const pointLight = new THREE.PointLight(0xffffff, 1);
+            pointLight.position.set(5, 5, 5);
+            threeScene.add(pointLight);
+            
+            animateThree();
+        }
+
+        function animateThree() {
+            requestAnimationFrame(animateThree);
+            
+            // Update particles
+            particles = particles.filter(p => {
+                p.mesh.position.x += p.vx;
+                p.mesh.position.y += p.vy;
+                p.mesh.rotation.x += 0.02;
+                p.mesh.rotation.y += 0.02;
+                p.life -= 0.008;
+                p.mesh.material.opacity = Math.max(0, p.life);
+                
+                if (p.life <= 0) {
+                    threeScene.remove(p.mesh);
+                    return false;
+                }
+                return true;
+            });
+            
+            threeRenderer.render(threeScene, threeCamera);
+        }
+
+        // Create particles around the edges, not on the hand
+        function createThreeParticlesAtEdges(color, count = 15) {
+            const colorHex = parseInt(color.replace('#', ''), 16);
+            
+            for (let i = 0; i < count; i++) {
+                const geometry = new THREE.IcosahedronGeometry(0.08 + Math.random() * 0.08, 0);
+                const material = new THREE.MeshPhongMaterial({
+                    color: colorHex,
+                    transparent: true,
+                    opacity: 0.9,
+                    emissive: colorHex,
+                    emissiveIntensity: 0.3
+                });
+                const mesh = new THREE.Mesh(geometry, material);
+                
+                // Position at edges of the screen
+                const edge = Math.floor(Math.random() * 4);
+                switch(edge) {
+                    case 0: // Top
+                        mesh.position.x = (Math.random() - 0.5) * 8;
+                        mesh.position.y = 3 + Math.random();
+                        break;
+                    case 1: // Bottom
+                        mesh.position.x = (Math.random() - 0.5) * 8;
+                        mesh.position.y = -3 - Math.random();
+                        break;
+                    case 2: // Left
+                        mesh.position.x = -4 - Math.random();
+                        mesh.position.y = (Math.random() - 0.5) * 5;
+                        break;
+                    case 3: // Right
+                        mesh.position.x = 4 + Math.random();
+                        mesh.position.y = (Math.random() - 0.5) * 5;
+                        break;
+                }
+                mesh.position.z = Math.random() * 2;
+                
+                // Velocity towards center but not reaching it
+                const vx = -mesh.position.x * 0.01 + (Math.random() - 0.5) * 0.02;
+                const vy = -mesh.position.y * 0.01 + (Math.random() - 0.5) * 0.02;
+                
+                threeScene.add(mesh);
+                particles.push({ mesh, life: 1, vx, vy });
+            }
+        }
+
+        async function initMediaPipe() {
+            const videoElement = document.getElementById('input-video');
+            
+            hands = new Hands({
+                locateFile: (file) => {
+                    return `https://cdn.jsdelivr.net/npm/@mediapipe/hands@0.4.1675469240/${file}`;
+                }
+            });
+            
+            hands.setOptions({
+                maxNumHands: 2,
+                modelComplexity: 1,
+                minDetectionConfidence: 0.7,
+                minTrackingConfidence: 0.5
+            });
+            
+            hands.onResults(onResults);
+            
+            camera = new Camera(videoElement, {
+                onFrame: async () => {
+                    await hands.send({ image: videoElement });
+                },
+                width: 1280,
+                height: 720
+            });
+            
+            try {
+                await camera.start();
+                updateStatus('ready', '摄像头已启动');
+            } catch (err) {
+                console.error('Camera error:', err);
+                updateStatus('error', '摄像头访问失败');
+            }
+        }
+
+        function updateStatus(type, message) {
+            const statusEl = document.getElementById('status');
+            const colors = {
+                ready: 'bg-green-500/20 text-green-300',
+                error: 'bg-red-500/20 text-red-300',
+                detecting: 'bg-blue-500/20 text-blue-300'
+            };
+            const dotColors = {
+                ready: 'bg-green-400',
+                error: 'bg-red-400',
+                detecting: 'bg-blue-400'
+            };
+            
+            statusEl.className = `px-4 py-2 ${colors[type]} rounded-full text-sm flex items-center gap-2`;
+            statusEl.innerHTML = `<span class="w-2 h-2 ${dotColors[type]} rounded-full animate-pulse"></span>${message}`;
+        }
+
+        function onResults(results) {
+            canvasCtx.save();
+            canvasCtx.clearRect(0, 0, outputCanvas.width, outputCanvas.height);
+            
+            // Draw camera feed (mirrored)
+            canvasCtx.translate(outputCanvas.width, 0);
+            canvasCtx.scale(-1, 1);
+            canvasCtx.drawImage(results.image, 0, 0, outputCanvas.width, outputCanvas.height);
+            canvasCtx.restore();
+            
+            // Draw hand landmarks
+            if (results.multiHandLandmarks && results.multiHandLandmarks.length > 0) {
+                updateStatus('detecting', '检测到手部');
+                
+                for (const landmarks of results.multiHandLandmarks) {
+                    // Draw connections with gradient
+                    drawStylizedHand(landmarks);
+                    
+                    // Detect gesture
+                    const gesture = detectGesture(landmarks);
+                    if (gesture) {
+                        handleGesture(gesture, landmarks);
+                    }
+                }
+            } else {
+                if (currentGesture) {
+                    hideGestureDisplay();
+                }
+                currentGesture = null;
+            }
+        }
+
+        function drawStylizedHand(landmarks) {
+            // Mirror landmarks for display
+            const mirroredLandmarks = landmarks.map(l => ({
+                x: 1 - l.x,
+                y: l.y,
+                z: l.z
+            }));
+            
+            // Draw connections
+            const connections = [
+                [0, 1], [1, 2], [2, 3], [3, 4],
+                [0, 5], [5, 6], [6, 7], [7, 8],
+                [0, 9], [9, 10], [10, 11], [11, 12],
+                [0, 13], [13, 14], [14, 15], [15, 16],
+                [0, 17], [17, 18], [18, 19], [19, 20],
+                [5, 9], [9, 13], [13, 17]
+            ];
+            
+            const gradient = canvasCtx.createLinearGradient(0, 0, outputCanvas.width, outputCanvas.height);
+            gradient.addColorStop(0, '#FF69B4');
+            gradient.addColorStop(0.5, '#9B59B6');
+            gradient.addColorStop(1, '#3498DB');
+            
+            canvasCtx.strokeStyle = gradient;
+            canvasCtx.lineWidth = 3;
+            canvasCtx.lineCap = 'round';
+            
+            for (const [start, end] of connections) {
+                const startPoint = mirroredLandmarks[start];
+                const endPoint = mirroredLandmarks[end];
+                
+                canvasCtx.beginPath();
+                canvasCtx.moveTo(startPoint.x * outputCanvas.width, startPoint.y * outputCanvas.height);
+                canvasCtx.lineTo(endPoint.x * outputCanvas.width, endPoint.y * outputCanvas.height);
+                canvasCtx.stroke();
+            }
+            
+            // Draw landmark points - smaller and less obtrusive
+            for (let i = 0; i < mirroredLandmarks.length; i++) {
+                const landmark = mirroredLandmarks[i];
+                const x = landmark.x * outputCanvas.width;
+                const y = landmark.y * outputCanvas.height;
+                
+                canvasCtx.beginPath();
+                canvasCtx.arc(x, y, 4, 0, 2 * Math.PI);
+                canvasCtx.fillStyle = 'rgba(255, 255, 255, 0.9)';
+                canvasCtx.fill();
+            }
+        }
+
+        function detectGesture(landmarks) {
+            const indexExtended = isFingerExtended(landmarks, 'index');
+            const middleExtended = isFingerExtended(landmarks, 'middle');
+            const ringExtended = isFingerExtended(landmarks, 'ring');
+            const pinkyExtended = isFingerExtended(landmarks, 'pinky');
+            const thumbExtended = isThumbExtended(landmarks);
+            
+            const thumbTip = landmarks[4];
+            const thumbBase = landmarks[2];
+            const indexTip = landmarks[8];
+            const indexMCP = landmarks[5];
+            
+            // Wave / Open hand (all fingers extended)
+            if (indexExtended && middleExtended && ringExtended && pinkyExtended && thumbExtended) {
+                return 'wave';
+            }
+            
+            // OK gesture (thumb and index form circle, other fingers extended)
+            const thumbIndexDist = Math.hypot(thumbTip.x - indexTip.x, thumbTip.y - indexTip.y);
+            if (thumbIndexDist < 0.08 && middleExtended && ringExtended && pinkyExtended) {
+                return 'ok';
+            }
+            
+            // Point up (only index extended, pointing up)
+            if (indexExtended && !middleExtended && !ringExtended && !pinkyExtended && !thumbExtended) {
+                if (indexTip.y < indexMCP.y) {
+                    return 'pointUp';
+                }
+            }
+            
+            // Rock gesture (index and pinky extended, others closed)
+            if (indexExtended && !middleExtended && !ringExtended && pinkyExtended && !thumbExtended) {
+                return 'rock';
+            }
+            
+            // Call gesture (thumb and pinky extended, others closed)
+            if (thumbExtended && !indexExtended && !middleExtended && !ringExtended && pinkyExtended) {
+                return 'call';
+            }
+            
+            // Thumbs up (only thumb extended, pointing up)
+            if (thumbExtended && !indexExtended && !middleExtended && !ringExtended && !pinkyExtended) {
+                if (thumbTip.y < thumbBase.y) {
+                    return 'thumbsUp';
+                } else {
+                    return 'thumbsDown';
+                }
+            }
+            
+            // Peace sign (index and middle extended)
+            if (indexExtended && middleExtended && !ringExtended && !pinkyExtended) {
+                return 'peace';
+            }
+            
+            // I Love You (thumb, index, and pinky extended)
+            if (thumbExtended && indexExtended && !middleExtended && !ringExtended && pinkyExtended) {
+                return 'iLoveYou';
+            }
+            
+            // Fist (all fingers closed)
+            if (!indexExtended && !middleExtended && !ringExtended && !pinkyExtended && !thumbExtended) {
+                return 'fist';
+            }
+            
+            return null;
+        }
+
+        function isFingerExtended(landmarks, finger) {
+            const fingerIndices = {
+                index: [5, 6, 7, 8],
+                middle: [9, 10, 11, 12],
+                ring: [13, 14, 15, 16],
+                pinky: [17, 18, 19, 20]
+            };
+            
+            if (!fingerIndices[finger]) return false;
+            
+            const [mcp, pip, dip, tip] = fingerIndices[finger].map(i => landmarks[i]);
+            
+            return tip.y < pip.y;
+        }
+
+        function isThumbExtended(landmarks) {
+            const thumbTip = landmarks[4];
+            const thumbMCP = landmarks[2];
+            const indexMCP = landmarks[5];
+            
+            const thumbDistance = Math.hypot(thumbTip.x - indexMCP.x, thumbTip.y - indexMCP.y);
+            const baseDistance = Math.hypot(thumbMCP.x - indexMCP.x, thumbMCP.y - indexMCP.y);
+            
+            return thumbDistance > baseDistance * 1.5;
+        }
+
+        function handleGesture(gestureType, landmarks) {
+            const now = Date.now();
+            
+            if (currentGesture !== gestureType || now - lastGestureTime > 2500) {
+                currentGesture = gestureType;
+                lastGestureTime = now;
+                
+                const gesture = GESTURES[gestureType];
+                if (gesture) {
+                    showGestureDisplay(gesture);
+                    createEdgeEffects(gesture, landmarks);
+                    addToHistory(gesture);
+                }
+            }
+        }
+
+        function showGestureDisplay(gesture) {
+            const display = document.getElementById('current-gesture');
+            const nameEl = document.getElementById('gesture-name');
+            
+            nameEl.textContent = `${gesture.emoji} ${gesture.name}`;
+            display.style.opacity = '1';
+            display.style.transform = 'translateX(-50%) scale(1)';
+            
+            setTimeout(() => {
+                display.style.opacity = '0';
+                display.style.transform = 'translateX(-50%) scale(0.8)';
+            }, 2500);
+        }
+
+        function hideGestureDisplay() {
+            const display = document.getElementById('current-gesture');
+            display.style.opacity = '0';
+        }
+
+        // Create effects around the edges of the video, not on the hand
+        function createEdgeEffects(gesture, landmarks) {
+            const overlay = document.getElementById('gesture-overlay');
+            const rect = outputCanvas.getBoundingClientRect();
+            const width = rect.width;
+            const height = rect.height;
+            
+            // Clear previous effects
+            overlay.innerHTML = '';
+            
+            // Create corner decorations
+            createCornerDecorations(overlay, gesture, width, height);
+            
+            // Create edge particles that float around the border
+            createEdgeParticles(overlay, gesture, width, height);
+            
+            // Create bottom banner
+            createBottomBanner(overlay, gesture, width, height);
+            
+            // Create Three.js edge particles
+            createThreeParticlesAtEdges(gesture.color, 20);
+        }
+
+        function createCornerDecorations(overlay, gesture, width, height) {
+            const corners = [
+                { x: 20, y: 20 },
+                { x: width - 60, y: 20 },
+                { x: 20, y: height - 60 },
+                { x: width - 60, y: height - 60 }
+            ];
+            
+            corners.forEach((corner, i) => {
+                const deco = document.createElement('div');
+                deco.className = 'corner-decoration';
+                deco.style.left = corner.x + 'px';
+                deco.style.top = corner.y + 'px';
+                deco.style.fontSize = '2.5rem';
+                deco.style.animationDelay = (i * 0.1) + 's';
+                deco.textContent = gesture.particles[i % gesture.particles.length];
+                overlay.appendChild(deco);
+                
+                setTimeout(() => deco.remove(), 3000);
+            });
+        }
+
+        function createEdgeParticles(overlay, gesture, width, height) {
+            // Create particles along the edges
+            const edgePositions = [];
+            
+            // Top edge
+            for (let i = 0; i < 5; i++) {
+                edgePositions.push({ x: 80 + (width - 160) * (i / 4), y: 15, tx: (Math.random() - 0.5) * 60, ty: -80 - Math.random() * 40 });
+            }
+            // Bottom edge
+            for (let i = 0; i < 5; i++) {
+                edgePositions.push({ x: 80 + (width - 160) * (i / 4), y: height - 80, tx: (Math.random() - 0.5) * 60, ty: 80 + Math.random() * 40 });
+            }
+            // Left edge
+            for (let i = 0; i < 3; i++) {
+                edgePositions.push({ x: 15, y: 80 + (height - 160) * (i / 2), tx: -80 - Math.random() * 40, ty: (Math.random() - 0.5) * 60 });
+            }
+            // Right edge
+            for (let i = 0; i < 3; i++) {
+                edgePositions.push({ x: width - 50, y: 80 + (height - 160) * (i / 2), tx: 80 + Math.random() * 40, ty: (Math.random() - 0.5) * 60 });
+            }
+            
+            edgePositions.forEach((pos, i) => {
+                setTimeout(() => {
+                    const particle = document.createElement('div');
+                    particle.className = 'emoji-particle';
+                    particle.textContent = gesture.particles[Math.floor(Math.random() * gesture.particles.length)];
+                    particle.style.left = pos.x + 'px';
+                    particle.style.top = pos.y + 'px';
+                    particle.style.setProperty('--tx', pos.tx + 'px');
+                    particle.style.setProperty('--ty', pos.ty + 'px');
+                    overlay.appendChild(particle);
+                    
+                    setTimeout(() => particle.remove(), 2500);
+                }, i * 80);
+            });
+        }
+
+        function createBottomBanner(overlay, gesture, width, height) {
+            const banner = document.createElement('div');
+            banner.className = 'bottom-banner';
+            banner.style.backgroundColor = gesture.bgColor;
+            banner.style.color = gesture.color;
+            banner.style.border = `3px solid ${gesture.color}`;
+            banner.innerHTML = `${gesture.emoji} ${gesture.name} ${gesture.emoji}`;
+            overlay.appendChild(banner);
+            
+            setTimeout(() => {
+                banner.style.transition = 'opacity 0.5s';
+                banner.style.opacity = '0';
+                setTimeout(() => banner.remove(), 500);
+            }, 2500);
+        }
+
+        function addToHistory(gesture) {
+            const historyList = document.getElementById('history-list');
+            const now = new Date();
+            const timeStr = now.toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+            
+            gestureHistory.unshift({
+                gesture,
+                time: timeStr
+            });
+            
+            if (gestureHistory.length > 10) {
+                gestureHistory.pop();
+            }
+            
+            historyList.innerHTML = gestureHistory.map(item => `
+                <div class="history-item flex items-center gap-2 p-2 bg-white/5 rounded-lg">
+                    <span class="text-xl">${item.gesture.emoji}</span>
+                    <div class="flex-1">
+                        <p class="font-semibold text-sm">${item.gesture.name}</p>
+                        <p class="text-purple-300 text-xs">${item.time}</p>
+                    </div>
+                </div>
+            `).join('');
+        }
+
+        // Initialize on load
+        window.addEventListener('load', init);
+    </script>
+</body>
+</html>
